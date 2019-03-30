@@ -3,21 +3,28 @@
 #include <algorithm>
 #include <type_traits>
 #include <assert.h>
+#include <array>
 #include <stdint.h>
 #include <math.h>
 
 namespace{
     typedef uint8_t impl_t;
+    constexpr size_t impl_t_byte_sz = sizeof(impl_t);
+    constexpr size_t impl_t_bit_sz = sizeof(impl_t)*8;
 }
 
 template<size_t _SZ>
 struct bigint{
 
     static_assert(std::is_unsigned<impl_t>::value);
-    static_assert(_SZ >= 8);
+
+    //template<size_t SZ1, size_t SZ2>
+    //friend bigint<std::max(SZ1, SZ2)+1> add_u(const bigint<SZ1>& lhs, const bigint<SZ2>& rhs);
+    //template<size_t SZ1, size_t SZ2> 
+    //static bigint<std::max(SZ1, SZ2)+1> add_u(const bigint<SZ1>& lhs, const bigint<SZ2>& rhs);
 
     constexpr static size_t get_segments_count(){
-        if(_SZ & ~_SZ == 0) { 
+        if((_SZ-1) & ~_SZ) { 
             return _SZ/(sizeof(impl_t)*8); }
         else { 
             size_t ceil_log_2 = (MSB(_SZ) << 1);
@@ -36,7 +43,8 @@ struct bigint{
     constexpr static size_t segments_count = get_segments_count();
     constexpr static size_t binary_width = _SZ + 2;
     //constexpr static size_t decimal_width = need compile-time log10;
-    impl_t _segments[segments_count] = {};
+    //impl_t _segments[segments_count] = {};
+    std::array<impl_t, segments_count> _segments = {};
 
     uint8_t flags = 0;
     enum { 
@@ -47,13 +55,21 @@ struct bigint{
     bigint(){}
     template<typename T> bigint(T val){
         static_assert(std::is_integral<T>::value);
+        flags &= ~TRUNCATED;
         if(val < 0) { flags |= NEGATIVE; }
         size_t uval = abs(val);
-        for(size_t i=0; i < sizeof(T)/sizeof(impl_t); i++){
-            _segments[i] = (impl_t)(uval >> sizeof(impl_t)*8*i);
+        for(size_t i=0; i < segments_count; i++){
+            _segments.at(i) = (impl_t)(uval >> sizeof(impl_t)*8*i);
+        }
+        if(segments_count * sizeof(impl_t) < sizeof(T)){
+            for(size_t i= segments_count; i < sizeof(T)/sizeof(impl_t); i++){
+                if((impl_t)(uval >> sizeof(impl_t)*8*i) != 0){ flags |= TRUNCATED; break; }
+            }
         }
     }
     template<size_t SZ> bigint(const bigint<SZ>& other){
+        flags &= ~TRUNCATED;
+        flags = other.flags;
         for(size_t i=0; i< segments_count; i++){ _segments[i] = other.get_segment(i); }
         if constexpr (bigint<SZ>::segments_count > segments_count){
             for(size_t i = segments_count; i < bigint<SZ>::segments_count; i++){
@@ -72,10 +88,11 @@ struct bigint{
     void to_string_binary(char * str) const {
         str[0] = is_negative() ? '-' : '+';
         for(size_t i=0; i < _SZ; i++){
-            size_t segment_i = floor(i/(sizeof(impl_t)*8));
-            size_t bit_i = i - ( segment_i * sizeof(impl_t) * 8 );
-            if (_segments[segment_i] & (1 << bit_i)) { str[i+1] = '1';}
-            else                                     { str[i+1] = '0';}
+            size_t segment_i = floor(i/impl_t_bit_sz);
+            size_t bit_i = i - ( segment_i * impl_t_bit_sz);
+            str[i+1] = 
+            _segments[segments_count - segment_i-1] & (1 << (impl_t_bit_sz - bit_i-1)) 
+            ? '1' : '0';
         }
         str[binary_width-1] = '\0';
     }
@@ -85,10 +102,11 @@ template<size_t SZ1, size_t SZ2>
 static bigint<std::max(SZ1, SZ2)+1> add_u(const bigint<SZ1>& lhs, const bigint<SZ2>& rhs){
     constexpr size_t ret_sz = std::max(SZ1, SZ2)+1;
     bigint<ret_sz> ret;
-    uint8_t carry = 0;
-    impl_t  limit = -1;
+    impl_t carry = 0;
+    impl_t limit = -1;
 
     for(size_t i=0; i < ret.segments_count; i++){
+        //printf("%i %i | %i\n", lhs.get_segment(i), rhs.get_segment(i), carry);
         ret._segments[i] = lhs.get_segment(i) + rhs.get_segment(i);
         if(ret._segments[i] < lhs.get_segment(i)){ 
             ret._segments[i] += carry; carry = 1; } 
@@ -104,26 +122,55 @@ static bigint<std::max(SZ1, SZ2)+1> add_u(const bigint<SZ1>& lhs, const bigint<S
 };
 template<size_t SZ1, size_t SZ2> 
 static bigint<std::max(SZ1,SZ2)+1> sub_u(const bigint<SZ1>& lhs, const bigint<SZ2>& rhs){
-    bigint<std::max(SZ1,SZ2)+1> ret;
-    uint8_t carry = 0;
+    constexpr size_t ret_sz = std::max(SZ1, SZ2)+1;
+    bigint<ret_sz> ret;
+    impl_t carry = 0;
     impl_t limit = -1;
 
-    for(int i=0; i<ret.segments_count; i++){
+    for(size_t i=0; i<ret.segments_count; i++){
         ret._segments[i] = lhs.get_segment(i) - rhs.get_segment(i) - carry;
-        if  (  (rhs.get_segment(i) > lhs.get_segment(i)) ||
-               (rhs.get_segment(i) == limit && carry == 1) )
-        {
-            carry = 1;
-        }
+        if  (  ( ret.get_segment(i) > lhs.get_segment(i)) ||
+               ( rhs.get_segment(i) == limit && carry == 1) )
+            { carry = 1; }
+        else{ carry = 0; }
     }
     if(carry){ 
+        for(size_t i=0; i<ret.segments_count; i++){ ret._segments[i] = ~ret.get_segment(i); }
+        ret = add_u(ret,bigint<8>(1) );
         ret.toggle_sign();
-        for(int i=0; i<std::max(SZ1, SZ2); i++){ ret._segments[i] = ~ret.get_segment(i); }
-        //ret = ret + 1;
     }
     return ret;
 }
-
+#pragma GCC diagnostic ignored "-Wshift-overflow"
+template<size_t SZ>
+inline bigint<SZ> operator<<(const bigint<SZ>& lhs, size_t shift){
+    bigint<SZ> ret = lhs;
+    for(size_t i=0; i<lhs.segments_count; i++){
+        size_t msseg_d = shift / (sizeof(impl_t)*8);       // most / least significant segment distnace
+        size_t lsseg_d = shift / (sizeof(impl_t)*8) + 1;   // given in indices
+        size_t msseg_i = i - msseg_d;
+        size_t lsseg_i = i - lsseg_d;
+        impl_t msseg = lhs.get_segment(msseg_i) << (shift - msseg_d*impl_t_bit_sz);
+        impl_t lsseg = lhs.get_segment(lsseg_i) >> (impl_t_bit_sz - (shift - msseg_d*impl_t_bit_sz));
+        ret._segments[i] = msseg | lsseg;
+    }
+    return ret;
+}
+template<size_t SZ>
+inline bigint<SZ> operator>>(const bigint<SZ>& lhs, size_t shift){
+    bigint<SZ> ret = lhs;
+    for(size_t i=0; i<lhs.segments_count; i++){
+        size_t msseg_d = shift / (sizeof(impl_t)*8) + 1;   // given in indices
+        size_t lsseg_d = shift / (sizeof(impl_t)*8);       // most /least significant segment distnace
+        size_t msseg_i = i + msseg_d;
+        size_t lsseg_i = i + lsseg_d;
+        impl_t msseg = lhs.get_segment(msseg_i) << (impl_t_bit_sz - (shift - lsseg_d*impl_t_bit_sz));
+        impl_t lsseg = lhs.get_segment(lsseg_i) >> (shift - lsseg_d*impl_t_bit_sz);
+        ret._segments[i] = msseg | lsseg;
+    }
+    return ret;
+}
+#pragma GCC diagnostic pop
 template<size_t SZ, typename T>
 inline bigint<std::max(SZ,sizeof(T)*8)+1> operator+(const bigint<SZ>& lhs, T rhs){
     return operator+(lhs, bigint<sizeof(T)*8>(rhs));
@@ -140,11 +187,13 @@ template<size_t SZ, typename T>
 inline bigint<std::max(SZ,sizeof(T)*8)+1> operator-(T lhs, const bigint<SZ>& rhs){
     return operator-(bigint<sizeof(T)*8>(lhs), rhs);
 }
-
 template<size_t SZ1, size_t SZ2>
 inline bigint<std::max(SZ1,SZ2)+1> operator+(const bigint<SZ1>& lhs, const bigint<SZ2>& rhs){
     if(lhs.sign() == rhs.sign())    { return add_u<SZ1,SZ2>(lhs, rhs);}
-    else                            { return sub_u<SZ1,SZ2>(lhs, rhs);}
+    else                            { 
+        if(rhs.is_negative())         return sub_u<SZ1,SZ2>(lhs, rhs);
+        else                          return sub_u<SZ1,SZ2>(rhs, lhs);
+    }
 }
 template<size_t SZ1, size_t SZ2>
 inline bigint<std::max(SZ1,SZ2)+1> operator-(const bigint<SZ1>& lhs, const bigint<SZ2>& rhs){
