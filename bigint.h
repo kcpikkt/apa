@@ -87,7 +87,8 @@ struct bigint{
         size_t bit_i = index - ( segment_i * impl_t_bit_sz);
         return (get_segment(segment_i) & (1 << bit_i));
     }
-    inline bool     is_negative()   const { return (flags & NEGATIVE);  }
+    inline bool     is_negative()   const { return  (flags & NEGATIVE);  }
+    inline bool     is_positive()   const { return !(flags & NEGATIVE);  }
     inline int8_t   sign()          const { return (flags & NEGATIVE) ? -1 : 1; }
     inline void     set_sign(bool s)      { flags &= ~NEGATIVE; flags |= NEGATIVE * s; }
     inline bool     was_truncated() const { return (flags & TRUNCATED); }
@@ -147,42 +148,7 @@ struct bigint{
 // Arithmetic Operators
 // TODO: /, %
 // IN PLACE: +, -, *
-template<size_t SZ1, size_t SZ2> 
-static bigint<SZ1+SZ2> mul_u(const bigint<SZ1>& lhs, bigint<SZ2> rhs){
-    bigint<SZ1+SZ2> ret = lhs; 
-    ret.set_sign(0); rhs.set_sign(0);
-    if(!rhs.is_zero() && !lhs.is_zero()){
-        auto two_factors = rhs.clz();
-        rhs = rhs >> two_factors;
-        ret = ret << two_factors;
-        bigint<SZ1+SZ2> temp;
-        for(size_t i=0; i < (rhs.bit_sz - rhs.ctz()); i++){
-            if(rhs.bit_at(i)){
-                temp = temp + (ret << i);
-            }
-        }
-        ret = temp;
-    }else{
-        ret = 0;
-    }
-    return ret;
-}
-template<size_t SZ, typename T>
-inline bigint<SZ+sizeof(T)*8> operator*(T lhs, const bigint<SZ>& rhs){
-    return operator*(bigint<sizeof(T)*8>(lhs), rhs);
-}
-
-template<size_t SZ, typename T>
-inline bigint<SZ+sizeof(T)*8> operator*(const bigint<SZ>& lhs, T rhs){
-    return operator*(lhs, bigint<sizeof(T)*8>(rhs));
-}
-template<size_t SZ1, size_t SZ2>
-inline bigint<SZ1+SZ2> operator*(const bigint<SZ1>& lhs, const bigint<SZ2>& rhs){
-    bigint<SZ1+SZ2> ret = mul_u(lhs,rhs);
-    ret.set_sign(lhs.sign() xor rhs.sign());
-    return ret;
-}
-
+//
 
 template<size_t SZ1, size_t SZ2> 
 static bigint<std::max(SZ1, SZ2)+1> add_u(const bigint<SZ1>& lhs, const bigint<SZ2>& rhs){
@@ -207,20 +173,6 @@ static bigint<std::max(SZ1, SZ2)+1> add_u(const bigint<SZ1>& lhs, const bigint<S
     }
     return ret;
 };
-template<size_t SZ, typename T>
-inline bigint<std::max(SZ,sizeof(T)*8)+1> operator-(T lhs, const bigint<SZ>& rhs){
-    return operator-(bigint<sizeof(T)*8>(lhs), rhs);
-}
-template<size_t SZ, typename T>
-inline bigint<std::max(SZ,sizeof(T)*8)+1> operator-(const bigint<SZ>& lhs, T rhs){
-    return operator-(lhs, bigint<sizeof(T)*8>(rhs));
-}
-template<size_t SZ1, size_t SZ2>
-inline bigint<std::max(SZ1,SZ2)+1> operator-(const bigint<SZ1>& lhs, const bigint<SZ2>& rhs){
-    if(lhs.sign() == rhs.sign())    { return sub_u<SZ1,SZ2>(lhs, rhs);}
-    else                            { return add_u<SZ1,SZ2>(lhs, rhs);}
-}
-
 
 template<size_t SZ1, size_t SZ2> 
 static bigint<std::max(SZ1,SZ2)+1> sub_u(const bigint<SZ1>& lhs, const bigint<SZ2>& rhs){
@@ -260,7 +212,60 @@ inline bigint<std::max(SZ1,SZ2)+1> operator+(const bigint<SZ1>& lhs, const bigin
         else                          return sub_u<SZ1,SZ2>(rhs, lhs);
     }
 }
-// Arithmetic Operators
+template<size_t SZ, typename T>
+inline bigint<std::max(SZ,sizeof(T)*8)+1> operator-(T lhs, const bigint<SZ>& rhs){
+    return operator-(bigint<sizeof(T)*8>(lhs), rhs);
+}
+template<size_t SZ, typename T>
+inline bigint<std::max(SZ,sizeof(T)*8)+1> operator-(const bigint<SZ>& lhs, T rhs){
+    return operator-(lhs, bigint<sizeof(T)*8>(rhs));
+}
+template<size_t SZ1, size_t SZ2>
+inline bigint<std::max(SZ1,SZ2)+1> operator-(const bigint<SZ1>& lhs, const bigint<SZ2>& rhs){
+    if(lhs.sign() == rhs.sign())    { return sub_u<SZ1,SZ2>(lhs, rhs);}
+    else                            { return add_u<SZ1,SZ2>(lhs, rhs);}
+}
+
+template<size_t SZ1, size_t SZ2> 
+static bigint<SZ1+SZ2> mul_u(const bigint<SZ1>& lhs, bigint<SZ2> rhs){
+    bigint<SZ1+SZ2> ret = lhs; 
+    ret.set_sign(0); rhs.set_sign(0);
+    if(!rhs.is_zero() && !lhs.is_zero()){
+        auto two_factors = rhs.clz();
+        rhs = rhs >> two_factors;
+        ret = ret << two_factors;
+        bigint<SZ1+SZ2> temp;
+        for(size_t i=0; i < (rhs.bit_sz - rhs.ctz()); i++){
+            if(rhs.bit_at(i)){
+                temp = temp + (ret << i);
+            }
+        }
+        ret = temp;
+    }else{
+        ret = 0;
+    }
+    return ret;
+}
+template<size_t SZ, typename T>
+inline bigint<SZ+sizeof(T)*8> operator*(T lhs, const bigint<SZ>& rhs){
+    return operator*(bigint<sizeof(T)*8>(lhs), rhs);
+}
+
+template<size_t SZ, typename T>
+inline bigint<SZ+sizeof(T)*8> operator*(const bigint<SZ>& lhs, T rhs){
+    return operator*(lhs, bigint<sizeof(T)*8>(rhs));
+}
+template<size_t SZ1, size_t SZ2>
+inline bigint<SZ1+SZ2> operator*(const bigint<SZ1>& lhs, const bigint<SZ2>& rhs){
+    bigint<SZ1+SZ2> ret = mul_u(lhs,rhs);
+    //FIXME
+    //ret.set_sign(lhs.sign() xor rhs.sign());
+    return ret;
+}
+
+
+
+// Uniary Operators
 // TODO: ++, --, +, -, 
 // IN PLACE:
 
@@ -315,28 +320,39 @@ inline bigint<std::min(SZ1, SZ2)> operator&(const bigint<SZ1>& lhs, const bigint
 // TODO:
 // IN PLACE: ==, !=, <, >, >=, <=
 template<size_t SZ1, size_t SZ2>
-inline bool operator<(const bigint<SZ1>& lhs, const bigint<SZ2>& rhs){
+inline bool comp_u(const bigint<SZ1>& lhs, const bigint<SZ2>& rhs){ //is lhs greater
     for(size_t i = std::max(lhs.segments_count, rhs.segments_count); i > 0; i--){
         auto lhs_seg = lhs.get_segment(i-1);
         auto rhs_seg = rhs.get_segment(i-1);
         if((bool)lhs_seg xor (bool)rhs_seg) return (lhs_seg == 0);
-        else                                if (lhs_seg <  rhs_seg) return true;
+        else                                if (lhs_seg > rhs_seg) return true;
     }
     return false;
 }
 template<size_t SZ1, size_t SZ2>
 inline bool operator>(const bigint<SZ1>& lhs, const bigint<SZ2>& rhs){
-    for(size_t i = std::max(lhs.segments_count, rhs.segments_count); i > 0; i--){
-        auto lhs_seg = lhs.get_segment(i-1);
-        auto rhs_seg = rhs.get_segment(i-1);
-        if((bool)lhs_seg xor (bool)rhs_seg) return (rhs_seg == 0);
-        else                                if (lhs_seg >  rhs_seg) return true;
+    if(lhs.sign() == rhs.sign())
+        return (lhs.is_positive() ? comp_u(lhs, rhs) : comp_u(rhs, lhs));
+    else{
+        if(lhs.is_zero() && rhs.is_zero()) return false;
+        else return lhs.is_positive();
     }
-    return false;
+}
+template<size_t SZ1, size_t SZ2>
+inline bool operator<(const bigint<SZ1>& lhs, const bigint<SZ2>& rhs){
+    if(lhs.sign() == rhs.sign())
+        return (lhs.is_positive() ? comp_u(rhs, lhs) : comp_u(lhs, rhs));
+    else{
+        if(lhs.is_zero() && rhs.is_zero()) return false;
+        else return rhs.is_positive();
+    }
 }
 
 template<size_t SZ1, size_t SZ2>
 inline bool operator==(const bigint<SZ1>& lhs, const bigint<SZ2>& rhs){
+    if( lhs.sign() != rhs.sign()) 
+        return lhs.is_zero() && rhs.is_zero();
+
     for(size_t i = 0; i < std::max(lhs.segments_count, rhs.segments_count); i++)
         if(lhs.get_segment(i-1) != rhs.get_segment(i-1)) return false;
     return true;
