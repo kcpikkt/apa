@@ -1,0 +1,46 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+../include/bigint.h
+algorithm
+-
+complex
+-
+vector
+-
+iostream
+-
+type_traits
+-
+assert.h
+-
+array
+-
+stdint.h
+-
+math.h
+-
+
+/shared/projects/bigint/example/main.cpp
+stdio.h
+-
+initializer_list
+-
+iostream
+-
+stdint.h
+-
+iomanip
+-
+bitset
+-
+random
+-
+bigint.h
+/shared/projects/bigint/example/bigint.h
+

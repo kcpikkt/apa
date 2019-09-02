@@ -1,0 +1,4 @@
+/shared/projects/bigint/build/CMakeFiles/rebuild_cache.dir
+/shared/projects/bigint/build/CMakeFiles/edit_cache.dir
+/shared/projects/bigint/build/CMakeFiles/example.dir
+/shared/projects/bigint/build/CMakeFiles/test.dir
