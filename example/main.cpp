@@ -22,7 +22,7 @@ template<size_t N> void print_bigint(const bigint::Signed<N>& integer){
 }
 
 // #define LHS 11
-#define B 16
+#define B 32
 
 const long LHS = 251;
 const long RHS = 1801;
@@ -30,6 +30,8 @@ const long RHS = 1801;
 int main(){
     std::random_device rd;
     std::mt19937_64 mt(rd());
+
+
 
     bigint::s<B> lhs = (LHS);
     bigint::s<32> rhs = (RHS);

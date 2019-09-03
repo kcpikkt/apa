@@ -1,6 +1,7 @@
 #pragma once
 //TODO: reduce stl dependancy
 #include <algorithm>
+#include <functional>
 #include <complex>
 #include <vector>
 #include <iostream>
@@ -8,6 +9,7 @@
 #include <assert.h>
 #include <array>
 #include <stdint.h>
+#include <assert.h>
 #include <math.h>
 
 #ifndef BIGINT_IMPL_TYPE
@@ -86,46 +88,18 @@ public:
     inline bool     is_negative()   const { return  (flags & NEGATIVE);  }
     inline bool     is_positive()   const { return !(flags & NEGATIVE);  }
     inline int8_t   sign()          const { return (flags & NEGATIVE) ? -1 : 1; }
-    inline void     set_sign(bool s)      { flags &= ~NEGATIVE; flags |= NEGATIVE * s; }
-    inline bool     was_truncated() const { return (flags & TRUNCATED); }
-    inline void     toggle_sign()         { flags ^= NEGATIVE; }
+    inline int8_t   sign_bool()     const { return (flags & NEGATIVE) ?  1 : 0; }
+    inline void     set_sign_bool(bool b) { flags &= ~NEGATIVE; flags |= NEGATIVE * b; }
+    inline void     set_sign(int s) { flags &= ~NEGATIVE; flags |= NEGATIVE * (s < 0); }
+    inline bool     trucated() const { return (flags & TRUNCATED); }
+    inline void     negate()         { flags ^= NEGATIVE; }
     inline bool     is_zero()       const { 
         for(auto e : _segments) if(e != 0) return false;
         return true; 
     }
-    size_t ctz() const {          // count trailing zeros
-        size_t ret = 0, i = 0; 
-        for(; i < segments_count; i++) {
-            if(_segments[i] == 0) ret += impl_t_bit_sz;
-            else break;
-        }
-        if(i != segments_count){
-            impl_t mask, j = 0;
-            do{
-                j++;
-                mask = (impl_t)pow(2, j)-1;
-            } while( !(_segments[i] & mask) );
-            ret += j - 1;
-        }
-        return ret;
-    }
-    size_t clz() const {          // count leading zeros
-        size_t ret = 0, i = segments_count; 
-        for(; i > 0; i--) {
-            if(_segments[i-1] == 0) ret += impl_t_bit_sz;
-            else break;
-        }
-        if(i != 0){
-            impl_t mask; size_t j = impl_t_bit_sz;
-            do{
-                j--;
-                mask = ~((impl_t)pow(2, j)-1);
-            } while( !(_segments[i-1] & mask) );
-            ret += impl_t_bit_sz - j-1;
-        }
-        return ret;
-    }
 
+    size_t ctz() const; // count trailing zeros
+    size_t clz() const; // count leading zeros
 
     std::string binary_string() const {
         // size_t real_sz = _SZ - clz();
@@ -273,7 +247,7 @@ public:
 // Relational Operators
     // is lhs greater
     template<size_t SZ1, size_t SZ2>
-    friend inline bool comp_u      (const Signed<SZ1>& lhs, const Signed<SZ2>& rhs);
+    friend inline int8_t comp_u      (const Signed<SZ1>& lhs, const Signed<SZ2>& rhs);
 
     //operator>
     template<size_t SZ1, size_t SZ2>
@@ -311,6 +285,58 @@ private:
 
 // =================================================================================
 namespace bigint{
+
+// Utility
+template<size_t _SZ>
+inline impl_t Signed<_SZ>::get_segment(size_t index) const {
+    return (index < segments_count) ? _segments[index] : 0;
+}
+
+template<size_t _SZ>
+inline bool Signed<_SZ>::bit_at(size_t index) const {
+    size_t segment_i = floor(index/impl_t_bit_sz);
+    size_t bit_i = index - ( segment_i * impl_t_bit_sz);
+    return (get_segment(segment_i) & (1 << bit_i));
+}
+
+
+template<size_t _SZ>
+size_t Signed<_SZ>::ctz() const {          // count trailing zeros
+    size_t ret = 0, i = 0; 
+    for(; i < segments_count; i++) {
+        if(_segments[i] == 0) ret += impl_t_bit_sz;
+        else break;
+    }
+    if(i != segments_count){
+        impl_t mask, j = 0;
+        do{
+            j++;
+            mask = (impl_t)pow(2, j)-1;
+        } while( !(_segments[i] & mask) );
+        ret += j - 1;
+    }
+    return ret;
+}
+
+template<size_t _SZ>
+size_t Signed<_SZ>::clz() const {          // count leading zeros
+    size_t ret = 0, i = segments_count; 
+    for(; i > 0; i--) {
+        if(_segments[i-1] == 0) ret += impl_t_bit_sz;
+        else break;
+    }
+    if(i != 0){
+        impl_t mask; size_t j = impl_t_bit_sz;
+        do{
+            j--;
+            mask = ~((impl_t)pow(2, j)-1);
+        } while( !(_segments[i-1] & mask) );
+        ret += impl_t_bit_sz - j-1;
+    }
+    return ret;
+}
+
+
 // Constructors
 //
 template<size_t _SZ>
@@ -359,7 +385,7 @@ Signed<_SZ>::Signed(const Signed<SZ>& other){
 template<size_t _SZ>
 template<typename T>
 bool Signed<_SZ>::import(T * data, size_t count){ 
-    if(sizeof(T) * count > sizeof(impl_t) * segments_count) return false;
+    // if(sizeof(T) * count > sizeof(impl_t) * segments_count) return false;
 
     for(auto s : _segments) s = 0;
 
@@ -374,6 +400,9 @@ bool Signed<_SZ>::import(T * data, size_t count){
         for(size_t i = 0; i < count; i++) {
             T dataval = data[i];
             for(size_t j = 0; j < sizeof(T) / sizeof(impl_t); j++) {
+
+                if(i * sizeof(T) / sizeof(impl_t) + j > segments_count) break;
+
                 _segments[i * sizeof(T) / sizeof(impl_t) + j] =
                     dataval >> j * sizeof(impl_t) * 8;
             }
@@ -398,24 +427,11 @@ Signed<_SZ>& Signed<_SZ>::operator=(const Signed<SZ>& other){
 }
 
 
-// utility
-template<size_t _SZ>
-inline impl_t Signed<_SZ>::get_segment(size_t index) const {
-    return (index < segments_count) ? _segments[index] : 0;
-}
-
-template<size_t _SZ>
-inline bool Signed<_SZ>::bit_at(size_t index) const {
-    size_t segment_i = floor(index/impl_t_bit_sz);
-    size_t bit_i = index - ( segment_i * impl_t_bit_sz);
-    return (get_segment(segment_i) & (1 << bit_i));
-}
-
 //subtract unsigned
 template<size_t SZ1, size_t SZ2> 
-/*static */Signed<std::max(SZ1, SZ2)+1> add_u(const Signed<SZ1>& lhs, const Signed<SZ2>& rhs){
-    constexpr size_t ret_sz = std::max(SZ1, SZ2)+1;
-    Signed<ret_sz> ret = lhs;
+Signed<std::max(SZ1, SZ2)+1> add_u(const Signed<SZ1>& lhs, const Signed<SZ2>& rhs){
+    constexpr size_t RET_SZ = std::max(SZ1, SZ2)+1;
+    Signed<RET_SZ> ret = lhs;
 
     std::function<bool(size_t, impl_t)>
     add_to_segment = [&](size_t index, impl_t val) {
@@ -440,25 +456,51 @@ template<size_t SZ1, size_t SZ2>
 //subtract unsigned
 template<size_t SZ1, size_t SZ2> 
 Signed<std::max(SZ1,SZ2)+1> sub_u(const Signed<SZ1>& lhs, const Signed<SZ2>& rhs){
-    constexpr size_t ret_sz = std::max(SZ1, SZ2)+1;
-    Signed<ret_sz> ret;
-    impl_t carry = 0;
-    impl_t limit = -1;
 
-    for(size_t i=0; i<ret.segments_count; i++){
-        ret._segments[i] = lhs.get_segment(i) - rhs.get_segment(i) - carry;
-        if  (  ( ret.get_segment(i) > lhs.get_segment(i)) ||
-            ( rhs.get_segment(i) == limit && carry == 1) )
-            { carry = 1; }
-        else{ carry = 0; }
-    }
-    if(carry){ 
-        for(size_t i=0; i<ret.segments_count; i++){ ret._segments[i] = ~ret.get_segment(i); }
-        ret = add_u(ret,Signed<8>(1) );
-        ret.toggle_sign();
-    }
+    assert(comp_u(lhs, rhs) > 0);
+
+    constexpr size_t RET_SZ = std::max(SZ1, SZ2)+1;
+
+    Signed<RET_SZ> ret = lhs;
+
+    std::function<bool(size_t, impl_t)>
+        sub_from_segment = [&](size_t index, impl_t val) {
+                             impl_t temp = ret._segments[index];
+                             ret._segments[index] -= val;
+                             if(ret._segments[index] > temp) {
+                                 if(index == ret.segments_count - 1) //underflow
+                                     return false;
+                                 else
+                                     return sub_from_segment(index + 1, 1);
+                             }
+                             return true;
+                         };
+
+    //TODO: signal underflow (shouldn't happen - lhs >= rhs)
+    for(size_t i=0; i < rhs.segments_count; i++)
+        sub_from_segment(i, rhs._segments[i]);
+
     return ret;
 }
+//     constexpr size_t RET_SZ = std::max(SZ1, SZ2)+1;
+//     Signed<RET_SZ> ret;
+//     impl_t carry = 0;
+//     impl_t limit = -1;
+
+//     for(size_t i=0; i<ret.segments_count; i++){
+//         ret._segments[i] = lhs.get_segment(i) - rhs.get_segment(i) - carry;
+//         if  (  ( ret.get_segment(i) > lhs.get_segment(i)) ||
+//             ( rhs.get_segment(i) == limit && carry == 1) )
+//             { carry = 1; }
+//         else{ carry = 0; }
+//     }
+//     if(carry){ 
+//         for(size_t i=0; i<ret.segments_count; i++){ ret._segments[i] = ~ret.get_segment(i); }
+//         ret = add_u(ret,Signed<8>(1) );
+//         ret.negate();
+//     }
+//     return ret;
+// }
 
 //operator+
 template<size_t SZ, typename T>
@@ -473,11 +515,22 @@ inline Signed<std::max(SZ,sizeof(T)*8)+1> operator+(T lhs, const Signed<SZ>& rhs
 
 template<size_t SZ1, size_t SZ2>
 inline Signed<std::max(SZ1,SZ2)+1> operator+(const Signed<SZ1>& lhs, const Signed<SZ2>& rhs){
-    if(lhs.sign() == rhs.sign())    { return add_u<SZ1,SZ2>(lhs, rhs);}
-    else                            {
-        if(rhs.is_negative())         return sub_u<SZ1,SZ2>(lhs, rhs);
-        else                          return sub_u<SZ1,SZ2>(rhs, lhs);
+    Signed<std::max(SZ1,SZ2)+1> ret;
+
+    if(lhs.sign() != rhs.sign()) {
+        if(comp_u(lhs, rhs) > 0) {
+            ret = sub_u(lhs,rhs);
+            ret.set_sign( lhs.sign());
+        } else {
+            ret = sub_u(rhs,lhs);
+            ret.set_sign(-lhs.sign());
+        }
+    } else {
+        ret = add_u(lhs, rhs);
+        ret.set_sign(lhs.sign());
     }
+
+    return ret;
 }
 
 //operator+=
@@ -498,7 +551,6 @@ inline Signed<SZ1>& operator+=(Signed<SZ1>& lhs, const Signed<SZ2>& rhs){
     lhs = lhs + rhs;
     return lhs;
 }
- 
 
 //operator-
 template<size_t SZ, typename T>
@@ -510,91 +562,129 @@ template<size_t SZ, typename T>
 inline Signed<std::max(SZ,sizeof(T)*8)+1> operator-(const Signed<SZ>& lhs, T rhs){
     return operator-(lhs, Signed<sizeof(T)*8>(rhs));
 }
+
 template<size_t SZ1, size_t SZ2>
 inline Signed<std::max(SZ1,SZ2)+1> operator-(const Signed<SZ1>& lhs, const Signed<SZ2>& rhs){
-    if(lhs.sign() == rhs.sign())    { return sub_u<SZ1,SZ2>(lhs, rhs);}
-    else                            { return add_u<SZ1,SZ2>(lhs, rhs);}
+    Signed<std::max(SZ1,SZ2)+1> ret;
+
+    if(lhs.sign() != rhs.sign()) {
+        ret = add_u(lhs, rhs);
+        ret.set_sign(lhs.sign());
+    } else {
+        if(comp_u(lhs, rhs) > 0) {
+            ret = sub_u(lhs, rhs);
+            ret.set_sign( lhs.sign());
+        } else {
+            ret = sub_u(rhs, lhs);
+            ret.set_sign(-lhs.sign());
+        }
+    }
+    return ret;
 }
 
+// FFT
+template<typename T>
+static bool is_pow2(T v) {
+    static_assert(std::is_unsigned<T>::value);
+    static_assert(std::is_integral<T>::value);
+    return v && !(v & (v - 1));
+}
 
-template<typename Iter>
-void fft(Iter first, Iter last, bool inverse = false){
+template<typename T>
+static constexpr T bit_reverse(T in, uint8_t count = sizeof(T) * 8) {
+    static_assert(std::is_unsigned<T>::value);
+    static_assert(std::is_integral<T>::value);
+    T out = in & 1;
+
+    for(uint8_t i = 0; i < count - 1; i++) {
+        in >>= 1;
+        out <<= 1;
+        out |= in & 1;
+    }
+    return out;
+}
+static_assert(bit_reverse(0u) == 0); // constexpr check
+
+template<typename I>
+void fast_fourier_transform(I first, I last, bool inverse = false){
     size_t size = last - first;
-    if(size >= 2){
-        std::vector<std::complex<double>> temp(size/2);
-        for(size_t i=0; i<size/2; i++){
-            temp [i] = first[i * 2 + 1];
-            first[i] = first[i * 2];
-        }
-        for(size_t i=0; i<size/2; i++)
-            first[i + size/2] = temp[i];
 
-        auto split = first + size/2;
-        fft(first,split, inverse);
-        fft(split,last, inverse);
-        for(size_t k=0; k<size/2; k++){
-            auto w = std::exp(std::complex<double>(0, (inverse ? -1 : 1) * 2.0 * M_PI * k / size));
-            auto bottom = first[k];
-            auto top = first[k + size/2];
+    assert(is_pow2(size));
 
-            first[k]          = bottom + w * top;
-            first[k + size/2] = bottom - w * top;
+    for(size_t i = 0; i < size; i++) {
+        size_t temp = bit_reverse(i, std::log2(MSB(size - 1)) + 1);
+
+        if(temp < i)
+            std::swap( *(first + temp), *(first + i));
+    }
+
+    for(int64_t i = std::log2(size) - 1;  i >= 0; i--) {
+        for(uint64_t j = 0; j < (1 << i); j++) {
+            auto part_sz = size / (1 << i);
+            for(uint64_t k = 0; k < size / (1 << (i + 1)); k++) {
+                auto w = std::exp(std::complex<double>
+                                    (0, (inverse ? -1 : 1) * 2.0 * M_PI * k / part_sz));
+
+                auto index = j * part_sz + k;
+
+                auto bottom = first[index];
+                auto top =    first[index + part_sz/2];
+
+                first[index]             = bottom + w * top;
+                first[index + part_sz/2] = bottom - w * top;
+            }
         }
     }
 }
-
 
 template<size_t SZ1, size_t SZ2> 
 Signed<SZ1+SZ2> mul_u(const Signed<SZ1>& lhs, Signed<SZ2> rhs){
 
-    constexpr size_t pow2_sz = MSB(Signed<SZ1+SZ2>::segments_count);
+    constexpr size_t RET_SZ = 2 * std::max(SZ1, SZ2);
+    constexpr size_t pow2_sz = MSB(Signed<2 * std::max(SZ1, SZ2)>::segments_count);
 
-    Signed<SZ1+SZ2> ret;
+    Signed<RET_SZ> ret;
     std::array<std::complex<double>, pow2_sz> X, Y, Z;
 
-    for(size_t i=0; i<pow2_sz; i++) X[i] = lhs.get_segment(i);
-    for(size_t i=0; i<pow2_sz; i++) Y[i] = rhs.get_segment(i);
+    for(size_t i = 0; i < pow2_sz; i++) {
+        X[i] = lhs.get_segment(i);
+        Y[i] = rhs.get_segment(i);
+    }
 
-    [[maybe_unused]] auto pp = [](std::array<std::complex<double>, pow2_sz> A){
-                  for(size_t i=0; i<pow2_sz; i++) std::cout << A[i] << " ";
-                  std::puts("\n");};
-
-    fft(X.begin(), X.end(), false);
-    fft(Y.begin(), Y.end(), false);
+    fast_fourier_transform(X.begin(), X.end(), false);
+    fast_fourier_transform(Y.begin(), Y.end(), false);
 
     for(size_t i=0; i<pow2_sz; i++) Z[i] = X[i] * Y[i];
 
-    fft(Z.begin(), Z.end(), true);
+    fast_fourier_transform(Z.begin(), Z.end(), true);
 
-    Signed<pow2_sz * impl_t_bit_sz> temp; 
-    for(size_t i=0; i<pow2_sz; i++) {
-        temp = std::llround(Z[i].real());
+    Signed<RET_SZ + 64> temp; // during 'reassemly' of the number little bit more space is needed
+    for(size_t i = 0; i < pow2_sz; i++) {
+        temp = std::llround( Z[i].real() );
         temp <<= i * impl_t_bit_sz;
+        temp >>= std::log2(pow2_sz);
         ret += temp;
     }
-    ret >>= std::log2(MSB(pow2_sz));
-
     return ret;
 }
 
-//template<size_t SZ, typename T>
-//inline Signed<SZ+sizeof(T)*8> operator*(T lhs, const Signed<SZ>& rhs){
-//    return operator*(Signed<sizeof(T)*8>(lhs), rhs);
-//}
-//
-//template<size_t SZ, typename T>
-//inline Signed<SZ+sizeof(T)*8> operator*(const Signed<SZ>& lhs, T rhs){
-//    return operator*(lhs, Signed<sizeof(T)*8>(rhs));
-//}
 template<size_t SZ1, size_t SZ2>
 inline Signed<SZ1+SZ2> operator*(const Signed<SZ1>& lhs, const Signed<SZ2>& rhs){
-    //FIXME
-    //ret.set_sign(lhs.sign() xor rhs.sign());
-
     Signed<SZ1+SZ2> ret = mul_u(lhs,rhs);
-
+    ret.set_sign_bool(lhs.sign() xor rhs.sign());
     return ret;
 }
+
+template<size_t SZ, typename T>
+inline Signed<SZ+sizeof(T)*8> operator*(T lhs, const Signed<SZ>& rhs){
+    return operator*(Signed<sizeof(T)*8>(lhs), rhs);
+}
+
+template<size_t SZ, typename T>
+inline Signed<SZ+sizeof(T)*8> operator*(const Signed<SZ>& lhs, T rhs){
+    return operator*(lhs, Signed<sizeof(T)*8>(rhs));
+}
+
 
 // template<size_t SZ1, size_t SZ2> 
 // Signed<SZ1+SZ2> div_u(const Signed<SZ1>& lhs, Signed<SZ2> rhs){
@@ -663,13 +753,13 @@ inline Signed<_SZ> operator--(Signed<_SZ> lhs, int){
 ////operator uniary+
 //template<size_t SZ>
 //inline Signed<SZ> operator+(Signed<SZ> lhs){
-//    lhs.set_sign(false);
+//    lhs.set_sign_bool(false);
 //    return lhs;
 //}
 ////operator uniary-
 //template<size_t SZ>
 //inline Signed<SZ> operator-(Signed<SZ> lhs){
-//    lhs.set_sign(true);
+//    lhs.set_sign_bool(true);
 //    return lhs;
 //}
 
@@ -769,47 +859,45 @@ inline Signed<std::max(SZ1, SZ2)> operator^(const Signed<SZ1>& lhs, const Signed
 
 // Relational Operators
 template<size_t SZ1, size_t SZ2>
-inline bool comp_u(const Signed<SZ1>& lhs, const Signed<SZ2>& rhs){ //is lhs greater
+inline int8_t comp_u(const Signed<SZ1>& lhs, const Signed<SZ2>& rhs){
     for(size_t i = std::max(lhs.segments_count, rhs.segments_count); i > 0; i--){
-        auto lhs_seg = lhs.get_segment(i-1);
-        auto rhs_seg = rhs.get_segment(i-1);
-        if((bool)lhs_seg xor (bool)rhs_seg) return (lhs_seg == 0);
-        else                                if (lhs_seg > rhs_seg) return true;
+        impl_t lhs_seg = lhs.get_segment(i-1);
+        impl_t rhs_seg = rhs.get_segment(i-1);
+
+        if(lhs_seg == rhs_seg) continue;
+        else {
+            if(lhs_seg > rhs_seg) return 1;
+            return -1;
+        }
     }
-    return false;
+    return 0;
 }
 
 //operator>
 template<size_t SZ1, size_t SZ2>
 inline bool operator>(const Signed<SZ1>& lhs, const Signed<SZ2>& rhs){
-    if(lhs.sign() == rhs.sign())
-        return (lhs.is_positive() ? comp_u(lhs, rhs) : comp_u(rhs, lhs));
-    else{
-        if(lhs.is_zero() && rhs.is_zero()) return false;
-        else return lhs.is_positive();
-    }
+    if(lhs.sign_bool() xor rhs.sign_bool())
+        return lhs.sign() > 0;
+    else
+        return (lhs.sign() * comp_u(lhs, rhs)) > 0;
 }
 
 //operator<
 template<size_t SZ1, size_t SZ2>
 inline bool operator<(const Signed<SZ1>& lhs, const Signed<SZ2>& rhs){
-    if(lhs.sign() == rhs.sign())
-        return (lhs.is_positive() ? comp_u(rhs, lhs) : comp_u(lhs, rhs));
-    else{
-        if(lhs.is_zero() && rhs.is_zero()) return false;
-        else return rhs.is_positive();
-    }
+    if(lhs.sign_bool() xor rhs.sign_bool())
+        return lhs.sign() < 0;
+    else
+        return (lhs.sign() * comp_u(lhs, rhs)) < 0;
 }
 
 //operator==
 template<size_t SZ1, size_t SZ2>
 inline bool operator==(const Signed<SZ1>& lhs, const Signed<SZ2>& rhs){
-    if( lhs.sign() != rhs.sign()) 
+    if(lhs.sign() == rhs.sign())
+        return comp_u(lhs, rhs) == 0;
+    else
         return lhs.is_zero() && rhs.is_zero();
-
-    for(size_t i = 0; i < std::max(lhs.segments_count, rhs.segments_count); i++)
-        if(lhs.get_segment(i-1) != rhs.get_segment(i-1)) return false;
-    return true;
 }
 
 //operator!=

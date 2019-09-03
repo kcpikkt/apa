@@ -9,6 +9,8 @@
 ../include/bigint.h
 algorithm
 -
+functional
+-
 complex
 -
 vector
@@ -22,6 +24,8 @@ assert.h
 array
 -
 stdint.h
+-
+assert.h
 -
 math.h
 -
