@@ -27,13 +27,15 @@ stdint.h
 -
 assert.h
 -
-math.h
+tgmath.h
 -
 
 /shared/projects/bigint/example/main.cpp
 stdio.h
 -
 initializer_list
+-
+type_traits
 -
 iostream
 -
@@ -44,6 +46,8 @@ iomanip
 bitset
 -
 random
+-
+tgmath.h
 -
 bigint.h
 /shared/projects/bigint/example/bigint.h
