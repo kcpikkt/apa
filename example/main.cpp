@@ -9,12 +9,13 @@
 #include <tgmath.h>
 #define PRINT_VAR(v) printf(#v "= %i\n",v)
 
-#include "bigint.h"
-
 template<typename ...Ts> void print(Ts... ts){
     (void) std::initializer_list<int>{ (std::cout << ts, 0)...}; }
 template<typename ...Ts> void log(Ts... ts){ print(ts..., '\n'); }
 
+#include "bigint.h"
+
+
 int main(){
-    [[maybe_unused]]auto d0 = apa::floating_point_t_decompose(3.0f);
+    apa::s<1024> ok(1.2f);
 }

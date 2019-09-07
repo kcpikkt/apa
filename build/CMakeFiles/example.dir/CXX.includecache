@@ -7,13 +7,9 @@
 #IncludeRegexTransform: 
 
 ../include/bigint.h
-algorithm
--
 functional
 -
 complex
--
-vector
 -
 iostream
 -
@@ -21,11 +17,7 @@ type_traits
 -
 assert.h
 -
-array
--
 stdint.h
--
-assert.h
 -
 tgmath.h
 -

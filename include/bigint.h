@@ -1,129 +1,131 @@
 #pragma once
 //TODO: reduce stl dependancy
-#include <algorithm>
 #include <functional>
 #include <complex>
-#include <vector>
 #include <iostream>
 #include <type_traits>
 #include <assert.h>
-#include <array>
 #include <stdint.h>
-#include <assert.h>
 #include <tgmath.h>
 
-#ifndef APA_IMPL_TYPE
-    #define APA_IMPL_TYPE uint16_t
+#ifndef APA_SEG_TYPE
+    #define APA_SEG_TYPE uint16_t
 #endif
-static_assert(std::is_integral<APA_IMPL_TYPE>::value);
-static_assert(std::is_unsigned<APA_IMPL_TYPE>::value);
 
-#ifndef APA_FLOATING_POINT_TYPE
-    #define APA_FLOATING_POINT_TYPE float
+#ifndef APA_FLOAT_TYPE
+    #define APA_FLOAT_TYPE double
 #endif
-static_assert(std::is_floating_point<APA_FLOATING_POINT_TYPE>::value);
 
-namespace apa{
-//DEBUG
-template<typename ...Ts> void print(Ts... ts){
-    (void) std::initializer_list<int>{ (std::cout << ts, 0)...}; }
-template<typename ...Ts> void log(Ts... ts){ print(ts..., '\n'); }
-//DEBUG
-namespace{
-  using impl_t = APA_IMPL_TYPE;
-  using floating_point_t = APA_FLOATING_POINT_TYPE;
-  constexpr size_t impl_t_size = sizeof(impl_t);
-  constexpr size_t impl_t_bits = sizeof(impl_t)*8;
-  constexpr size_t floating_point_t_size = sizeof(floating_point_t);
+namespace apa {
 
-  // NOTE: Is there platform agnostic way of acquiring parts bit counts for a given float type?
-  // NOTE: Since I don't know how I based it on IEC 559/IEEE 754 hence the assert here
-  static_assert(std::numeric_limits<floating_point_t>::is_iec559);
-  // so at least it won't compile in case of non compatibility
+template<typename F>
+struct float_info {
+// NOTE(kacper):
+//       Is there platform agnostic way of acquiring floating point types
+//       exponent and mantissa bit counts for a given float type?
+//       Since I don't know how to do that I just assumed IEC 559/IEEE 754
+//       standard floating points, hence the assert here - so at least
+//       it won't compile in case of non compatibility
+private:
+    constexpr static size_t _sgn_bits() {
+        return 1;
+    }
 
-  stemplate<typename T>
-  struct floating_point_info {
-  private:
-      static constexpr size_t _sgn_bits() {
-          return 1;
-      }
-  public:
-      static constexpr size_t sgn_bits = _sgn_bits();
-      static constexpr size_t sgn_bits = _sgn_bits();
-      static constexpr size_t sgn_bits = _sgn_bits();
-  };s
+    constexpr static size_t _exp_bits() {
+        switch( sizeof(F) ) {
+            case 4:  return 8;
+            case 8:  return 11;
+            case 10: return 15;
+            case 16: return 15;
+        }
+    }
+    constexpr static size_t _mnt_bits() {
+        switch( sizeof(F) ){
+            case 4:  return 23;
+            case 8:  return 52;
+            case 10: return 64;
+            case 16: return 112;
+        }
+    }
+public:
+    constexpr static size_t size = sizeof(F) * 8;
+    constexpr static size_t bits = sizeof(F) * 8;
 
-  constexpr size_t floating_point_t_exp_bits() {
-      switch(floating_point_t_size){
-          case 4:  return 8;
-          case 8:  return 11;
-          case 10: return 15;
-          case 16: return 15;
-      }
-  }
+    constexpr static size_t sgn_bits = _sgn_bits(); // sign
+    constexpr static size_t exp_bits = _exp_bits(); // exponent
+    constexpr static size_t mnt_bits = _mnt_bits(); // mantissa
 
-  constexpr size_t floating_point_t_mnt_bits() {
-      switch(floating_point_t_size){
-          case 4:  return 23;
-          case 8:  return 52;
-          case 10: return 64;
-          case 16: return 112;
-      }
-  }
+    static_assert(bits == sgn_bits + exp_bits + mnt_bits);
 
-  constexpr size_t floating_point_t_bits =
-      floating_point_info<floating_point_t>::sgn_bits +
-      floating_point_t_exp_bits() +
-      floating_point_t_mnt_bits();
+    constexpr static size_t mnt_full_words =
+        mnt_bits / (sizeof(unsigned char) * 8);
+};
+//     }
+// }
 
-  inline bool is_little_endian() {
-      const int x { 0x01 };
-      const void * addr = static_cast<const void *>(&x);
-      return static_cast<const unsigned char *>(addr);
-  }
-  constexpr size_t word_bits = sizeof(uint8_t) * 8;
+// }
 
-  constexpr size_t mantissa_full_words =
-      floating_point_t_mnt_bits() / word_bits;
+// constexpr size_t float_t_bits =
+//     floating_point_info<float_t>::sgn_bits +
+//     float_t_exp_bits() +
+//     float_t_mnt_bits();
 
-  constexpr size_t mantissa_residue_bits =
-      floating_point_t_mnt_bits() - mantissa_full_words * word_bits;
+inline bool is_little_endian() {
+    const int x { 0x01 };
+    const void * addr = static_cast<const void *>(&x);
+    return static_cast<const unsigned char *>(addr);
+}
+// constexpr size_t word_bits = sizeof(uint8_t) * 8;
 
-  struct floating_point_t_decomposition {
-      // little-endian here!
-      uint8_t mnt[mantissa_full_words + 1]; 
-      int exp, sgn;
-  };
+// constexpr size_t mantissa_full_words =
+//     float_t_mnt_bits() / word_bits;
 
-  union floating_point_t_cast{
-      floating_point_t_cast(floating_point_t _f) : f(_f) {}
-      floating_point_t f;
-      uint8_t b[sizeof(f)/sizeof(uint8_t)];
-      static_assert(sizeof(b) == sizeof(floating_point_t));
-  };
+// constexpr size_t mantissa_residue_bits =
+    // float_t_mnt_bits() - mantissa_full_words * word_bits;
 
-  floating_point_t_decomposition floating_point_t_decompose(floating_point_t f) {
-      auto n_mask = [](size_t n) { return ((size_t)1 << n) - 1; };
-      floating_point_t_cast cast(f);
-      floating_point_t_decomposition d;
+template<typename F>
+struct float_decomp {
+    // little-endian here!
+    uint8_t mnt[float_info<F>::mnt_full_words + 1]; 
+    int exp, sgn;
+};
 
-      floating_point_t norm = frexp(f, &d.exp);
-      uint8_t * fbyte = reinterpret_cast<uint8_t*>(&norm);
+// union float_t_cast{
+//     float_t_cast(float_t _f) : f(_f) {}
+//     float_t f;
+//     uint8_t b[sizeof(f)/sizeof(uint8_t)];
+//     static_assert(sizeof(b) == sizeof(float_t));
+// };
 
-      if(is_little_endian()) {
-          size_t i = 0;
-          for(; i < mantissa_full_words; i++)
-              d.mnt[i] = fbyte[i];
 
-          d.mnt[i] = fbyte[i] & n_mask(mantissa_residue_bits);
+template<typename F>
+float_decomp<F> float_decompose(F f) {
+    static_assert(std::is_floating_point<F>::value);
 
-          d.sgn = fbyte[floating_point_t_size - 1] & (1 << 7) ? -1 : 1;
-      } else {
-          static_assert(true, "big-endian not supported yet");
-      }
-      return d;
-  }
-  static_assert(floating_point_t_bits == sizeof(floating_point_t) * 8);
+    using info = float_info<F>;
+
+    auto n_mask = [] (size_t n) { return ((size_t)1 << n) - 1; };
+    float_decomp<F> d;
+
+    F norm = frexp(f, &d.exp);
+
+    using uword = unsigned char;
+    uword * fbyte = reinterpret_cast<uword *>(&norm);
+
+    // TODO(kacper): use C++20 std::endian
+    if( is_little_endian() ){
+        size_t i = 0;
+        for(; i < info::mnt_full_words; i++)
+          d.mnt[i] = fbyte[i];
+
+
+        d.mnt[i] = fbyte[i] &
+            n_mask(info::mnt_bits - info::mnt_full_words * sizeof(uword));
+    } else {
+        // TODO(kacper): implement for big-endian
+        assert(false);
+    }
+    return d;
 }
 
 constexpr static size_t MSB(size_t n){
@@ -134,10 +136,46 @@ constexpr static size_t MSB(size_t n){
     else{       return (n >> 1);     }
 }
 
-template<size_t _SZ>
+
+template<typename _seg_t, typename _float_t> struct NumAttr {
+    using seg_t   = _seg_t;
+    using float_t = _float_t;
+
+    static_assert(std::is_integral<seg_t>::value);
+    static_assert(std::is_unsigned<seg_t>::value);
+    static_assert(std::is_floating_point<float_t>::value);
+    static_assert(std::numeric_limits<float_t>::is_iec559);
+    // NOTE(kacper): (the same thing as before)
+    //       Is there platform agnostic way of acquiring floating point types
+    //       exponent and mantissa bit counts for a given float type?
+    //       Since I don't know how to do that I just assumed IEC 559/IEEE 754
+    //       standard floating points, hence the assert here - so at least
+    //       it won't compile in case of non compatibility
+
+    constexpr static size_t seg_t_size   = sizeof(seg_t);
+    constexpr static size_t seg_t_bits   = sizeof(seg_t) * 8;
+
+    constexpr static size_t float_t_size = sizeof(float_t);
+    constexpr static size_t float_t_bits = sizeof(float_t) * 8;
+
+    using float_t_info = float_info<float_t>;
+};
+
+using DefaultNumAttr = NumAttr<APA_SEG_TYPE, APA_FLOAT_TYPE>;
+
+template<size_t _SZ, typename _A = DefaultNumAttr>
 class _signed {
 
-    static_assert(std::is_unsigned<impl_t>::value);
+    using seg_t    = typename _A::seg_t;
+    using float_t  = typename _A::float_t;
+
+    constexpr static size_t seg_t_size   = _A::seg_t_size;
+    constexpr static size_t seg_t_bits   = _A::seg_t_bits;
+
+    constexpr static size_t float_t_size = _A::float_t_size;
+    constexpr static size_t float_t_bits = _A::float_t_bits;
+
+    using float_t_info = typename _A::float_t_info;
 
 public:
     enum { 
@@ -147,47 +185,48 @@ public:
 
     _signed();
 
-    // SFINAE for integers
-    template<typename Integer,
-             typename =
-             typename std::enable_if<std::is_integral<Integer>::value>::type>
-    _signed(Integer val);
+    // Constructor for integers
+    template<typename I,
+            typename =
+            typename std::enable_if<std::is_integral<I>::value>::type>
+    _signed(I val);
 
-    // SFINAE for floats
-    template<typename Float,
-             typename = 
-             typename std::enable_if<std::is_floating_point<Float>::value>::type,
-             typename = void> // <- trick so I can keep definitions outside class
-    _signed(Float val);
+    // Constructor for floats
+    template<typename F,
+            typename = 
+            typename std::enable_if<std::is_floating_point<F>::value>::type,
+            typename = void>
+    //      ^ HACK(kacper): so I can have unambigous definition outside class
+    _signed(F val);
 
 
     template<size_t SZ> 
-    _signed(const _signed<SZ>& other);
+    _signed(const _signed<SZ, _A>& other);
 
     template<typename T>
     bool import(T* data, size_t count); // TODO: endianness options and stuff
 
     constexpr static size_t get_segments_count(){
         if((_SZ-1) & ~_SZ) { 
-            return _SZ/(sizeof(impl_t)*8); }
+            return _SZ/(sizeof(seg_t)*8); }
         else {
             size_t ceil_log_2 = (MSB(_SZ) << 1);
             //static_assert( ceil_log_2 == 0);
-            return ceil_log_2/(sizeof(impl_t)*8);
+            return ceil_log_2/(sizeof(seg_t)*8);
         }
     }
 
     constexpr static size_t segments_count = get_segments_count();
     constexpr static size_t bit_sz = _SZ;
-    constexpr static size_t real_bit_sz = segments_count * impl_t_bits;
+    constexpr static size_t real_bit_sz = segments_count * seg_t_bits;
 
     //debug
     void print_segs() const {
-        for(impl_t s : _segments) std::cout << (uint32_t)s << " ";
+        for(seg_t s : _segments) std::cout << (uint32_t)s << " ";
         std::puts("\n");
     }
 
-    inline impl_t  get_segment(size_t index) const;
+    inline seg_t  get_segment(size_t index) const;
     inline bool bit_at(size_t index) const;
 
     inline uint8_t  get_flags()     const { return flags; }
@@ -232,293 +271,348 @@ public:
 
 // Assignment
     template<size_t SZ>
-    _signed<_SZ>& operator=(const _signed<SZ>& other);
+    _signed<_SZ, _A>& operator=
+    (const _signed<SZ, _A>& other);
 
 
 // Type Conversions
-    operator bool() const { return !is_zero(); }
+    explicit operator bool() const { return !is_zero(); }
 
 // Arithmetic Operators
     //add unsigned
-    template<size_t SZ1, size_t SZ2> 
-    friend _signed<std::max(SZ1, SZ2)+1> add_u(const _signed<SZ1>& lhs, const _signed<SZ2>& rhs);
+    template<size_t SZ1, size_t SZ2, typename A> 
+    friend _signed<std::max(SZ1, SZ2)+1, A> add_u
+      (const _signed<SZ1, A>& lhs, const _signed<SZ2, A>& rhs);
 
     //operator+
-    template<size_t SZ, typename T>
-    friend inline _signed<std::max(SZ,sizeof(T)*8)+1> operator+(const _signed<SZ>& lhs, T rhs);
+    template<size_t SZ, typename A, typename T, typename /* SFINAE */>
+    friend inline _signed<std::max(SZ,sizeof(T)*8)+1> operator+
+      (const _signed<SZ, A>& lhs, T rhs);
 
-    template<size_t SZ, typename T>
-    friend inline _signed<std::max(SZ,sizeof(T)*8)+1> operator+(T lhs, const _signed<SZ>& rhs);
+    template<size_t SZ, typename A, typename T, typename /* SFINAE */>
+    friend inline _signed<std::max(SZ,sizeof(T)*8)+1, A> operator+
+      (T lhs, const _signed<SZ, A>& rhs);
 
-    template<size_t SZ1, size_t SZ2>
-    friend inline _signed<std::max(SZ1,SZ2)+1> operator+(const _signed<SZ1>& lhs, const _signed<SZ2>& rhs);
+    template<size_t SZ1, size_t SZ2, typename A>
+    friend inline _signed<std::max(SZ1,SZ2)+1, A> operator+
+      (const _signed<SZ1, A>& lhs, const _signed<SZ2, A>& rhs);
 
     //operator+=
     // template<size_t SZ, typename T>
-    // friend inline _signed<std::max(SZ,sizeof(T)*8)+1> operator+=(const _signed<SZ>& lhs, T rhs);
+    // friend inline _signed<std::max(SZ,sizeof(T)*8)+1> operator+=
+    // (const _signed<SZ>& lhs, T rhs);
 
     // template<size_t SZ, typename T>
-    // friend inline _signed<std::max(SZ,sizeof(T)*8)+1> operator+=(T lhs, const _signed<SZ>& rhs);
+    // friend inline _signed<std::max(SZ,sizeof(T)*8)+1> operator+=
+    // (T lhs, const _signed<SZ>& rhs);
 
-    template<size_t SZ1, size_t SZ2>
-    friend inline _signed<SZ1>& operator+=(_signed<SZ1>& lhs, const _signed<SZ2>& rhs);
- 
-
+    template<size_t SZ1, size_t SZ2, typename A>
+    friend inline _signed<SZ1, A>& operator+=
+      (_signed<SZ1, A>& lhs, const _signed<SZ2, A>& rhs);
 
     //add unsigned
-    template<size_t SZ1, size_t SZ2> 
-    friend _signed<std::max(SZ1,SZ2)+1> sub_u(const _signed<SZ1>& lhs, const _signed<SZ2>& rhs);
+    template<size_t SZ1, size_t SZ2, typename A>
+    friend _signed<std::max(SZ1,SZ2)+1, A> sub_u
+      (const _signed<SZ1, A>& lhs, const _signed<SZ2, A>& rhs);
 
     //operator-
-    template<size_t SZ, typename T>
-    friend inline _signed<std::max(SZ,sizeof(T)*8)+1> operator-(T lhs, const _signed<SZ>& rhs);
+    template<size_t SZ, typename A, typename T>
+    friend inline _signed<std::max(SZ,sizeof(T)*8)+1, A> operator-
+      (T lhs, const _signed<SZ, A>& rhs);
 
-    template<size_t SZ, typename T>
-    friend inline _signed<std::max(SZ,sizeof(T)*8)+1> operator-(const _signed<SZ>& lhs, T rhs);
+    template<size_t SZ, typename A, typename T>
+    friend inline _signed<std::max(SZ,sizeof(T)*8)+1, A> operator-
+      (const _signed<SZ, A>& lhs, T rhs);
 
-    template<size_t SZ1, size_t SZ2>
-    friend inline _signed<std::max(SZ1,SZ2)+1> operator-(const _signed<SZ1>& lhs, const _signed<SZ2>& rhs);
+    template<size_t SZ1, size_t SZ2, typename A>
+    friend inline _signed<std::max(SZ1,SZ2)+1, A> operator-
+      (const _signed<SZ1, A>& lhs, const _signed<SZ2, A>& rhs);
 
     //multiply unsigned
-    template<size_t SZ1, size_t SZ2> 
-    friend _signed<SZ1+SZ2> mul_u(const _signed<SZ1>& lhs, _signed<SZ2> rhs);
+    template<size_t SZ1, size_t SZ2, typename A>
+    friend _signed<SZ1+SZ2, A> mul_u
+      (const _signed<SZ1, A>& lhs, _signed<SZ2, A> rhs);
 
     //operator*
     //template<size_t SZ, typename T>
-    //friend inline _signed<SZ+sizeof(T)*8> operator*(T lhs, const _signed<SZ>& rhs);
+    //friend inline _signed<SZ+sizeof(T)*8> operator*
+    // (T lhs, const _signed<SZ>& rhs);
     //
     //template<size_t SZ, typename T>
-    //friend inline _signed<SZ+sizeof(T)*8> operator*(const _signed<SZ>& lhs, T rhs);
+    //friend inline _signed<SZ+sizeof(T)*8> operator*
+    //(const _signed<SZ>& lhs, T rhs);
     //
-    template<size_t SZ1, size_t SZ2>
-    friend inline _signed<SZ1+SZ2> operator*(const _signed<SZ1>& lhs, const _signed<SZ2>& rhs);
+    template<size_t SZ1, size_t SZ2, typename A>
+    friend inline _signed<SZ1+SZ2, A> operator*
+      (const _signed<SZ1, A>& lhs, const _signed<SZ2, A>& rhs);
 
 // Uniary Operators
     //operator~
-    template<size_t SZ>
-    friend inline _signed<SZ> operator~(_signed<SZ> lhs);
+    template<size_t SZ, typename A>
+    friend inline _signed<SZ, A> operator~
+      (_signed<SZ, A> lhs);
 
     //operator prefix++;
-    template<size_t SZ>
-    friend inline _signed<SZ>& operator++(_signed<SZ>& lhs);
-    template<size_t SZ>
-    friend inline _signed<SZ> operator++(_signed<SZ>& lhs, int);
+    template<size_t SZ, typename A>
+    friend inline _signed<SZ, A>& operator++
+      (_signed<SZ, A>& lhs);
+
+    template<size_t SZ, typename A>
+    friend inline _signed<SZ, A> operator++
+      (_signed<SZ, A>& lhs, int);
 
     //operator prefix--
-    template<size_t SZ>
-    friend inline _signed<SZ>& operator--(_signed<SZ> lhs);
+    template<size_t SZ, typename A>
+    friend inline _signed<SZ>& operator--
+      (_signed<SZ> lhs);
 
     //operator postfix--
-    template<size_t SZ>
-    friend inline _signed<SZ> operator--(_signed<SZ> lhs, int);
+    template<size_t SZ, typename A>
+    friend inline _signed<SZ, A> operator--
+      (_signed<SZ, A> lhs, int);
 
 // Binary Operators
     //operator<<
-    template<size_t SZ>
-    friend inline _signed<SZ> operator<<(const _signed<SZ>& lhs, size_t shift);
+    template<size_t SZ, typename A>
+    friend inline _signed<SZ, A> operator<<
+      (const _signed<SZ, A>& lhs, size_t shift);
 
     //operator<<=
-    template<size_t SZ>
-    friend inline _signed<SZ>& operator<<=(_signed<SZ>& lhs, size_t shift);
+    template<size_t SZ, typename A>
+    friend inline _signed<SZ, A>& operator<<=
+      (_signed<SZ, A>& lhs, size_t shift);
 
     //operator>>
-    template<size_t SZ>
-    friend inline _signed<SZ> operator>>(const _signed<SZ>& lhs, size_t shift);
+    template<size_t SZ, typename A>
+    friend inline _signed<SZ, A> operator>>
+      (const _signed<SZ, A>& lhs, size_t shift);
 
     //operator>>=
-    template<size_t SZ>
-    friend inline _signed<SZ>& operator>>=(_signed<SZ>& lhs, size_t shift);
+    template<size_t SZ, typename A>
+    friend inline _signed<SZ, A>& operator>>=
+      (_signed<SZ, A>& lhs, size_t shift);
 
     //operator&
-    template<size_t SZ, typename T>
-    friend inline _signed<std::min(SZ, sizeof(T)*8)> operator&(const _signed<SZ>& lhs, const T rhs);
+    template<size_t SZ, typename A, typename T>
+    friend inline _signed<std::min(SZ, sizeof(T)*8), A> operator&
+      (const _signed<SZ, A>& lhs, const T rhs);
 
-    template<size_t SZ1, size_t SZ2>
-    friend inline _signed<std::min(SZ1, SZ2)> operator&(const _signed<SZ1>& lhs, const _signed<SZ2>& rhs);
+    template<size_t SZ1, size_t SZ2, typename A>
+    friend inline _signed<std::min(SZ1, SZ2), A> operator&
+      (const _signed<SZ1, A>& lhs, const _signed<SZ2, A>& rhs);
 
     //operator|
-    template<size_t SZ, typename T>
-    friend inline _signed<std::max(SZ, sizeof(T)*8)> operator|(const _signed<SZ>& lhs, const T rhs);
+    template<size_t SZ, typename A, typename T>
+    friend inline _signed<std::max(SZ, sizeof(T)*8), A> operator|
+      (const _signed<SZ, A>& lhs, const T rhs);
 
-    template<size_t SZ1, size_t SZ2>
-    friend inline _signed<std::max(SZ1, SZ2)> operator|(const _signed<SZ1>& lhs, const _signed<SZ2>& rhs);
+    template<size_t SZ1, size_t SZ2, typename A>
+    friend inline _signed<std::max(SZ1, SZ2), A> operator|
+      (const _signed<SZ1, A>& lhs, const _signed<SZ2, A>& rhs);
 
     //operator^
-    template<size_t SZ, typename T>
-    friend inline _signed<std::max(SZ, sizeof(T)*8)> operator^(const _signed<SZ>& lhs, const T rhs);
+    template<size_t SZ, typename A, typename T>
+    friend inline _signed<std::max(SZ, sizeof(T)*8), A> operator^
+      (const _signed<SZ, A>& lhs, const T rhs);
 
-    template<size_t SZ1, size_t SZ2>
-    friend inline _signed<std::max(SZ1, SZ2)> operator^(const _signed<SZ1>& lhs, const _signed<SZ2>& rhs);
+    template<size_t SZ1, size_t SZ2, typename A>
+    friend inline _signed<std::max(SZ1, SZ2), A> operator^
+      (const _signed<SZ1, A>& lhs, const _signed<SZ2, A>& rhs);
 
 // Relational Operators
     // is lhs greater
-    template<size_t SZ1, size_t SZ2>
-    friend inline int8_t comp_u      (const _signed<SZ1>& lhs, const _signed<SZ2>& rhs);
+    template<size_t SZ1, size_t SZ2, typename A>
+    friend inline int8_t comp_u
+      (const _signed<SZ1, A>& lhs, const _signed<SZ2, A>& rhs);
 
     //operator>
-    template<size_t SZ1, size_t SZ2>
-    friend inline bool operator>   (const _signed<SZ1>& lhs, const _signed<SZ2>& rhs);
+    template<size_t SZ1, size_t SZ2, typename A>
+    friend inline bool operator>
+      (const _signed<SZ1, A>& lhs, const _signed<SZ2, A>& rhs);
 
     //operator<
-    template<size_t SZ1, size_t SZ2>
-    friend inline bool operator<   (const _signed<SZ1>& lhs, const _signed<SZ2>& rhs);
+    template<size_t SZ1, size_t SZ2, typename A>
+    friend inline bool operator<
+      (const _signed<SZ1, A>& lhs, const _signed<SZ2, A>& rhs);
 
     //operator==
-    template<size_t SZ1, size_t SZ2>
-    friend inline bool operator==  (const _signed<SZ1>& lhs, const _signed<SZ2>& rhs);
+    template<size_t SZ1, size_t SZ2, typename A>
+    friend inline bool operator==
+      (const _signed<SZ1, A>& lhs, const _signed<SZ2, A>& rhs);
 
     //operator!=
-    template<size_t SZ1, size_t SZ2>
-    friend inline bool operator!=  (const _signed<SZ1>& lhs, const _signed<SZ2>& rhs);
+    template<size_t SZ1, size_t SZ2, typename A>
+    friend inline bool operator!=
+      (const _signed<SZ1, A>& lhs, const _signed<SZ2, A>& rhs);
 
     //operator<=
-    template<size_t SZ1, size_t SZ2>
-    friend inline bool operator<=  (const _signed<SZ1>& lhs, const _signed<SZ2>& rhs);
+    template<size_t SZ1, size_t SZ2, typename A>
+    friend inline bool operator<=
+      (const _signed<SZ1, A>& lhs, const _signed<SZ2, A>& rhs);
 
     //operator>=
-    template<size_t SZ1, size_t SZ2>
-    friend inline bool operator>=  (const _signed<SZ1>& lhs, const _signed<SZ2>& rhs);
+    template<size_t SZ1, size_t SZ2, typename A>
+    friend inline bool operator>=
+      (const _signed<SZ1, A>& lhs, const _signed<SZ2, A>& rhs);
 
 private:
-    std::array<impl_t, segments_count> _segments = {};
+    std::array<seg_t, segments_count> _segments = {};
     uint8_t flags = 0;
     double multiplication_error_bound;
-}; // class _signed
+}; // class _signed<size_t, typename>
 
-    template<size_t _SZ>
-    using s = _signed<_SZ>;
-} // namespace apa
+  template<size_t _SZ>
+  using s = _signed<_SZ>;
 
-// =================================================================================
-namespace apa{
+// ================================================= IMPLEMENTATION
 
-// Utility
-template<size_t _SZ>
-inline impl_t _signed<_SZ>::get_segment(size_t index) const {
+// ======================================= UTILITY METHODS
+template<size_t _SZ, typename A>
+inline typename _signed<_SZ, A>::seg_t
+_signed<_SZ, A>::get_segment(size_t index) const
+{
     return (index < segments_count) ? _segments[index] : 0;
 }
 
-template<size_t _SZ>
-inline bool _signed<_SZ>::bit_at(size_t index) const {
-    size_t segment_i = floor(index/impl_t_bits);
-    size_t bit_i = index - ( segment_i * impl_t_bits);
+template<size_t _SZ, typename A>
+inline bool _signed<_SZ, A>::bit_at(size_t index) const
+{
+    size_t segment_i = floor(index/seg_t_bits);
+    size_t bit_i = index - ( segment_i * seg_t_bits);
     return (get_segment(segment_i) & (1 << bit_i));
 }
 
-
-template<size_t _SZ>
-size_t _signed<_SZ>::ctz() const {          // count trailing zeros
+// count trailing zeros
+template<size_t _SZ, typename A>
+size_t _signed<_SZ, A>::ctz() const
+{
     size_t ret = 0, i = 0; 
     for(; i < segments_count; i++) {
-        if(_segments[i] == 0) ret += impl_t_bits;
+        if(_segments[i] == 0) ret += seg_t_bits;
         else break;
     }
     if(i != segments_count){
-        impl_t mask, j = 0;
+        seg_t mask, j = 0;
         do{
             j++;
-            mask = (impl_t)pow(2, j)-1;
+            mask = (seg_t)pow(2, j)-1;
         } while( !(_segments[i] & mask) );
         ret += j - 1;
     }
     return ret;
 }
 
-template<size_t _SZ>
-size_t _signed<_SZ>::clz() const {          // count leading zeros
+// count leading zeros
+template<size_t _SZ, typename A>
+size_t _signed<_SZ, A>::clz() const
+{
     size_t ret = 0, i = segments_count; 
     for(; i > 0; i--) {
-        if(_segments[i-1] == 0) ret += impl_t_bits;
+        if(_segments[i-1] == 0) ret += seg_t_bits;
         else break;
     }
     if(i != 0){
-        impl_t mask; size_t j = impl_t_bits;
+        seg_t mask; size_t j = seg_t_bits;
         do{
             j--;
-            mask = ~((impl_t)pow(2, j)-1);
+            mask = ~((seg_t)pow(2, j)-1);
         } while( !(_segments[i-1] & mask) );
-        ret += impl_t_bits - j-1;
+        ret += seg_t_bits - j-1;
     }
     return ret;
 }
 
 
-// Constructors
-//
-template<size_t _SZ>
-_signed<_SZ>::_signed() {}
+// ======================================= CONSTRUCTORS
+
+template<size_t _SZ, typename _A>
+_signed<_SZ, _A>::_signed()
+{}
 
 
-template<size_t _SZ>
-template<typename Integer, typename>
-_signed<_SZ>::_signed(Integer val){
+template<size_t _SZ, typename _A>
+template<typename I, typename /* SFINAE */>
+_signed<_SZ, _A>::_signed(I val)
+{
     flags &= ~TRUNCATED;
     if(val < 0) { flags |= NEGATIVE; }
 
     size_t uval = val;
-    if constexpr(!std::is_unsigned<Integer>::value) { // just to suppress warnings
+    if constexpr(!std::is_unsigned<I>::value) { // just to suppress warnings
         uval = llabs(val);
     }
     size_t i = 0;
-    for(; i < segments_count && i < sizeof(uval) / sizeof(impl_t); i++) {
-        _segments.at(i) = (impl_t)(uval >> i * sizeof(impl_t) * 8);
+    for(; i < segments_count && i < sizeof(uval) / sizeof(seg_t); i++) {
+        _segments.at(i) = (seg_t)(uval >> i * sizeof(seg_t) * 8);
     }
 
     for(; i < segments_count; i++) {
-        _segments.at(i) = (impl_t)0;
+        _segments.at(i) = (seg_t)0;
     }
 
-    if(segments_count * sizeof(impl_t) < sizeof(Integer)){
-        for(size_t i= segments_count; i < sizeof(Integer)/sizeof(impl_t); i++){
-            if((impl_t)(uval >> sizeof(impl_t)*8*i) != 0){ flags |= TRUNCATED; break; }
+    if(segments_count * sizeof(seg_t) < sizeof(I)){
+        for(size_t i= segments_count; i < sizeof(I)/sizeof(seg_t); i++){
+            if((seg_t)(uval >> sizeof(seg_t)*8*i) != 0){ flags |= TRUNCATED; break; }
         }
     }
 }
 
 
-template<size_t _SZ>
-template<typename Float, typename, typename>
-_signed<_SZ>::_signed([[maybe_unused]]Float val){
-    // auto d = floating_point_t_decompose()
-    return _signed<_SZ>();
+template<size_t _SZ, typename _A>
+template<typename F, typename /* SFINAE */, typename /* HACK */>
+_signed<_SZ, _A>::_signed([[maybe_unused]]F val)
+{
+    using info = float_info<F>;
+    float_decomp<F> d = float_decompose<F>(val);
+    import(d.mnt, info::mnt_full_words + 1);
+    for(size_t i=0; i<(info::mnt_full_words + 1); i++)
+        print(std::bitset<8>(d.mnt[i]), " ");
+
+    log();
+    for(size_t i=0; i<4; i++)
+        print(std::bitset<_A::seg_t_bits>(_segments[i]), " ");
 }
 
-template<size_t _SZ>
+template<size_t _SZ, typename _A>
 template<size_t SZ>
-_signed<_SZ>::_signed(const _signed<SZ>& other){
+_signed<_SZ, _A>::_signed(const _signed<SZ, _A>& other)
+{
     flags = other.get_flags();
     flags &= ~TRUNCATED;
     for(size_t i=0; i< segments_count; i++){ _segments[i] = other.get_segment(i); }
-    if constexpr (_signed<SZ>::segments_count > segments_count){
-        for(size_t i = segments_count; i < _signed<SZ>::segments_count; i++){
+    if constexpr (_signed<SZ, _A>::segments_count > segments_count){
+            for(size_t i = segments_count; i < _signed<SZ, _A>::segments_count; i++){
             if(other.get_segment(i) != 0){ flags |= TRUNCATED; break; }
         }
     }
 }
 
-template<size_t _SZ>
+// import raw binary little-endian data
+template<size_t _SZ, typename _A>
 template<typename T>
-bool _signed<_SZ>::import(T * data, size_t count){ 
-    // if(sizeof(T) * count > sizeof(impl_t) * segments_count) return false;
+bool _signed<_SZ, _A>::import
+(T * data, size_t count)
+{
+    // if(sizeof(T) * count > sizeof(seg_t) * segments_count) return false;
 
     for(auto s : _segments) s = 0;
 
-    if(sizeof(impl_t) > sizeof(T)){
+    if(sizeof(seg_t) > sizeof(T)){
         for(size_t i = 0; i < count; i++) {
-            for(size_t j = 0; j < sizeof(impl_t) / sizeof(T); j++) {
-                T dataval = data[i * sizeof(impl_t) / sizeof(T) + j];
-                _segments[i * sizeof(impl_t) / sizeof(T)] += dataval << j * sizeof(T) * 8;
+            for(size_t j = 0; j < sizeof(seg_t) / sizeof(T); j++) {
+                T dataval = data[i * sizeof(seg_t) / sizeof(T) + j];
+                _segments[i * sizeof(seg_t) / sizeof(T)] += dataval << j * sizeof(T) * 8;
             }
         }
     } else {
         for(size_t i = 0; i < count; i++) {
             T dataval = data[i];
-            for(size_t j = 0; j < sizeof(T) / sizeof(impl_t); j++) {
+            for(size_t j = 0; j < sizeof(T) / sizeof(seg_t); j++) {
 
-                if(i * sizeof(T) / sizeof(impl_t) + j > segments_count) break;
+                if(i * sizeof(T) / sizeof(seg_t) + j > segments_count) break;
 
-                _segments[i * sizeof(T) / sizeof(impl_t) + j] =
-                    dataval >> j * sizeof(impl_t) * 8;
+                _segments[i * sizeof(T) / sizeof(seg_t) + j] =
+                    dataval >> j * sizeof(seg_t) * 8;
             }
         }
     }
@@ -526,14 +620,16 @@ bool _signed<_SZ>::import(T * data, size_t count){
 }
 
 //Assignment
-template<size_t _SZ>
+template<size_t _SZ, typename _A>
 template<size_t SZ>
-_signed<_SZ>& _signed<_SZ>::operator=(const _signed<SZ>& other){
+_signed<_SZ, _A>& _signed<_SZ, _A>::operator=
+(const _signed<SZ, _A>& other)
+{
     flags = other.get_flags();
     flags &= ~TRUNCATED;
     for(size_t i=0; i < segments_count; i++){ _segments[i] = other.get_segment(i); }
-    if constexpr (_signed<SZ>::segments_count > segments_count){
-        for(size_t i = segments_count; i < _signed<SZ>::segments_count; i++){
+    if constexpr (_signed<SZ, _A>::segments_count > segments_count){
+        for(size_t i = segments_count; i < _signed<SZ, _A>::segments_count; i++){
             if(other.get_segment(i) != 0){ flags |= TRUNCATED; break; }
         }
     }
@@ -542,23 +638,27 @@ _signed<_SZ>& _signed<_SZ>::operator=(const _signed<SZ>& other){
 
 
 //subtract unsigned
-template<size_t SZ1, size_t SZ2> 
-_signed<std::max(SZ1, SZ2)+1> add_u(const _signed<SZ1>& lhs, const _signed<SZ2>& rhs){
-    constexpr size_t RET_SZ = std::max(SZ1, SZ2)+1;
-    _signed<RET_SZ> ret = lhs;
+template<size_t SZ1, size_t SZ2, typename A>
+_signed<std::max(SZ1, SZ2)+1, A> add_u
+(const _signed<SZ1, A>& lhs, const _signed<SZ2, A>& rhs)
+{
+    using seg_t = typename A::seg_t;
 
-    std::function<bool(size_t, impl_t)>
-    add_to_segment = [&](size_t index, impl_t val) {
-                         impl_t temp = ret._segments[index];
-                         ret._segments[index] += val;
-                         if(ret._segments[index] < temp) {
-                             if(index == ret.segments_count - 1) //overflow
-                                 return false;
-                             else
-                                 return add_to_segment(index + 1, 1);
-                         }
-                         return true;
-                     };
+    constexpr size_t RET_SZ = std::max(SZ1, SZ2)+1;
+    _signed<RET_SZ, A> ret = lhs;
+
+    std::function<bool(size_t, seg_t)>
+    add_to_segment = [&](size_t index, seg_t val) {
+                        seg_t temp = ret._segments[index];
+                        ret._segments[index] += val;
+                        if(ret._segments[index] < temp) {
+                            if(index == ret.segments_count - 1) //overflow
+                                return false;
+                            else
+                                return add_to_segment(index + 1, 1);
+                        }
+                        return true;
+                    };
 
     //TODO: signal overflow
     for(size_t i=0; i < rhs.segments_count; i++)
@@ -568,27 +668,30 @@ _signed<std::max(SZ1, SZ2)+1> add_u(const _signed<SZ1>& lhs, const _signed<SZ2>&
 }
 
 //subtract unsigned
-template<size_t SZ1, size_t SZ2> 
-_signed<std::max(SZ1,SZ2)+1> sub_u(const _signed<SZ1>& lhs, const _signed<SZ2>& rhs){
-
+template<size_t SZ1, size_t SZ2, typename A>
+_signed<std::max(SZ1,SZ2)+1, A> sub_u
+(const _signed<SZ1, A>& lhs, const _signed<SZ2, A>& rhs)
+{
     assert(comp_u(lhs, rhs) > 0);
+
+    using seg_t = typename A::seg_t;
 
     constexpr size_t RET_SZ = std::max(SZ1, SZ2)+1;
 
-    _signed<RET_SZ> ret = lhs;
+    _signed<RET_SZ, A> ret = lhs;
 
-    std::function<bool(size_t, impl_t)>
-        sub_from_segment = [&](size_t index, impl_t val) {
-                             impl_t temp = ret._segments[index];
-                             ret._segments[index] -= val;
-                             if(ret._segments[index] > temp) {
-                                 if(index == ret.segments_count - 1) //underflow
-                                     return false;
-                                 else
-                                     return sub_from_segment(index + 1, 1);
-                             }
-                             return true;
-                         };
+    std::function<bool(size_t, seg_t)>
+        sub_from_segment = [&](size_t index, seg_t val) {
+                            seg_t temp = ret._segments[index];
+                            ret._segments[index] -= val;
+                            if(ret._segments[index] > temp) {
+                                if(index == ret.segments_count - 1) //underflow
+                                    return false;
+                                else
+                                    return sub_from_segment(index + 1, 1);
+                            }
+                            return true;
+                        };
 
     //TODO: signal underflow (shouldn't happen - lhs >= rhs)
     for(size_t i=0; i < rhs.segments_count; i++)
@@ -598,8 +701,8 @@ _signed<std::max(SZ1,SZ2)+1> sub_u(const _signed<SZ1>& lhs, const _signed<SZ2>& 
 }
 //     constexpr size_t RET_SZ = std::max(SZ1, SZ2)+1;
 //     _signed<RET_SZ> ret;
-//     impl_t carry = 0;
-//     impl_t limit = -1;
+//     seg_t carry = 0;
+//     seg_t limit = -1;
 
 //     for(size_t i=0; i<ret.segments_count; i++){
 //         ret._segments[i] = lhs.get_segment(i) - rhs.get_segment(i) - carry;
@@ -617,19 +720,27 @@ _signed<std::max(SZ1,SZ2)+1> sub_u(const _signed<SZ1>& lhs, const _signed<SZ2>& 
 // }
 
 //operator+
-template<size_t SZ, typename T>
-inline _signed<std::max(SZ,sizeof(T)*8)+1> operator+(const _signed<SZ>& lhs, T rhs){
-    return operator+(lhs, _signed<sizeof(T)*8>(rhs));
+template<size_t SZ, typename A,typename T,
+  typename = typename std::enable_if<std::is_arithmetic<T>::value>::type>
+inline _signed<std::max(SZ,sizeof(T)*8)+1, A> operator+
+(const _signed<SZ, A>& lhs, T rhs)
+{
+    return operator+(lhs, _signed<sizeof(T)*8, A>(rhs));
 }
 
-template<size_t SZ, typename T>
-inline _signed<std::max(SZ,sizeof(T)*8)+1> operator+(T lhs, const _signed<SZ>& rhs){
-    return operator+(_signed<sizeof(T)*8>(lhs), rhs);
+template<size_t SZ, typename A, typename T,
+  typename = typename std::enable_if<std::is_arithmetic<T>::value>::type>
+inline _signed<std::max(SZ,sizeof(T)*8)+1, A> operator+
+(T lhs, const _signed<SZ, A>& rhs)
+{
+    return operator+(_signed<sizeof(T)*8, A>(lhs), rhs);
 }
 
-template<size_t SZ1, size_t SZ2>
-inline _signed<std::max(SZ1,SZ2)+1> operator+(const _signed<SZ1>& lhs, const _signed<SZ2>& rhs){
-    _signed<std::max(SZ1,SZ2)+1> ret;
+template<size_t SZ1, size_t SZ2, typename A>
+inline _signed<std::max(SZ1,SZ2)+1, A> operator+
+  (const _signed<SZ1, A>& lhs, const _signed<SZ2, A>& rhs)
+{
+    _signed<std::max(SZ1,SZ2)+1, A> ret;
 
     if(lhs.sign() != rhs.sign()) {
         if(comp_u(lhs, rhs) > 0) {
@@ -660,26 +771,32 @@ inline _signed<std::max(SZ1,SZ2)+1> operator+(const _signed<SZ1>& lhs, const _si
 
 // }
 
-template<size_t SZ1, size_t SZ2>
-inline _signed<SZ1>& operator+=(_signed<SZ1>& lhs, const _signed<SZ2>& rhs){
+template<size_t SZ1, size_t SZ2, typename A>
+inline _signed<SZ1, A>& operator+=
+(_signed<SZ1, A>& lhs, const _signed<SZ2, A>& rhs){
     lhs = lhs + rhs;
     return lhs;
 }
 
 //operator-
-template<size_t SZ, typename T>
-inline _signed<std::max(SZ,sizeof(T)*8)+1> operator-(T lhs, const _signed<SZ>& rhs){
-    return operator-(_signed<sizeof(T)*8>(lhs), rhs);
+template<size_t SZ, typename A, typename T>
+inline _signed<std::max(SZ, sizeof(T) * 8) + 1, A> operator-
+(T lhs, const _signed<SZ, A>& rhs)
+{
+    return operator-(_signed<sizeof(T)*8, A>(lhs), rhs);
 }
 
-template<size_t SZ, typename T>
-inline _signed<std::max(SZ,sizeof(T)*8)+1> operator-(const _signed<SZ>& lhs, T rhs){
-    return operator-(lhs, _signed<sizeof(T)*8>(rhs));
+template<size_t SZ, typename A, typename T>
+inline _signed<std::max(SZ, sizeof(T) * 8) + 1, A> operator-
+(const _signed<SZ, A>& lhs, T rhs){
+    return operator-(lhs, _signed<sizeof(T)*8, A>(rhs));
 }
 
-template<size_t SZ1, size_t SZ2>
-inline _signed<std::max(SZ1,SZ2)+1> operator-(const _signed<SZ1>& lhs, const _signed<SZ2>& rhs){
-    _signed<std::max(SZ1,SZ2)+1> ret;
+template<size_t SZ1, size_t SZ2, typename A>
+inline _signed<std::max(SZ1,SZ2)+1, A> operator-
+(const _signed<SZ1, A>& lhs, const _signed<SZ2, A>& rhs)
+{
+    _signed<std::max(SZ1,SZ2)+1, A> ret;
 
     if(lhs.sign() != rhs.sign()) {
         ret = add_u(lhs, rhs);
@@ -736,7 +853,7 @@ void fast_fourier_transform(I first, I last, bool inverse = false){
         for(uint64_t j = 0; j < (1 << i); j++) {
             auto part_sz = size / (1 << i);
             for(uint64_t k = 0; k < size / (1 << (i + 1)); k++) {
-                auto w = std::exp(std::complex<floating_point_t>
+                auto w = std::exp(std::complex<float_t>
                                     (0, (inverse ? 1 : -1) * 2.0 * M_PI * k / part_sz));
 
                 auto index = j * part_sz + k;
@@ -751,15 +868,18 @@ void fast_fourier_transform(I first, I last, bool inverse = false){
     }
 }
 
-template<size_t SZ1, size_t SZ2> 
-_signed<SZ1+SZ2> mul_u(const _signed<SZ1>& lhs, _signed<SZ2> rhs){
+template<size_t SZ1, size_t SZ2, typename A>
+_signed<SZ1+SZ2, A> mul_u
+(const _signed<SZ1, A>& lhs, _signed<SZ2, A> rhs)
+{
+    constexpr size_t seg_t_bits = A::seg_t_bits;
 
     constexpr size_t RET_SZ = SZ1 + SZ2;
     // constexpr size_t pow2_sz = MSB(_signed<2 * std::max(SZ1, SZ2)>::segments_count);
-    constexpr size_t pow2_sz = MSB(_signed<RET_SZ>::segments_count);
+    constexpr size_t pow2_sz = MSB(_signed<RET_SZ, A>::segments_count);
 
-    _signed<RET_SZ> ret;
-    std::array<std::complex<floating_point_t>, pow2_sz> X, Y, Z;
+    _signed<RET_SZ, A> ret;
+    std::array<std::complex<float_t>, pow2_sz> X, Y, Z;
 
     for(size_t i = 0; i < pow2_sz; i++) {
         X[i] = lhs.get_segment(i);
@@ -773,37 +893,45 @@ _signed<SZ1+SZ2> mul_u(const _signed<SZ1>& lhs, _signed<SZ2> rhs){
 
     fast_fourier_transform(Z.begin(), Z.end(), true);
 
-    _signed<RET_SZ + 512> temp = 0; // during 'reassemly' of the number little bit more space is needed
-    //TODO: double to apa
+    // during 'reassemly' of the number little bit more space is needed
+    _signed<RET_SZ + 512, A> temp = 0; 
+
+    //TODO: double to apa integer
     for(size_t i = 0; i < pow2_sz; i++) {
         temp = std::llround( Z[i].real() );
-        temp <<= i * impl_t_bits;
+        temp <<= i * seg_t_bits;
         temp >>= std::log2(pow2_sz);
         ret += temp;
     }
     return ret;
 }
 
-template<size_t SZ1, size_t SZ2>
-inline _signed<SZ1+SZ2> operator*(const _signed<SZ1>& lhs, const _signed<SZ2>& rhs){
+template<size_t SZ1, size_t SZ2, typename A>
+inline _signed<SZ1+SZ2, A> operator*
+(const _signed<SZ1, A>& lhs, const _signed<SZ2, A>& rhs)
+{
     _signed<SZ1+SZ2> ret = mul_u(lhs,rhs);
     ret.set_sign_bool(lhs.sign() xor rhs.sign());
     return ret;
 }
 
-template<size_t SZ, typename T>
-inline _signed<SZ+sizeof(T)*8> operator*(T lhs, const _signed<SZ>& rhs){
-    return operator*(_signed<sizeof(T)*8>(lhs), rhs);
+template<size_t SZ, typename A, typename T>
+inline _signed<SZ+sizeof(T)*8, A> operator*
+(T lhs, const _signed<SZ, A>& rhs)
+{
+    return operator*(_signed<sizeof(T)*8, A>(lhs), rhs);
 }
 
-template<size_t SZ, typename T>
-inline _signed<SZ+sizeof(T)*8> operator*(const _signed<SZ>& lhs, T rhs){
-    return operator*(lhs, _signed<sizeof(T)*8>(rhs));
+template<size_t SZ, typename A, typename T>
+inline _signed<SZ+sizeof(T)*8, A> operator*
+(const _signed<SZ, A>& lhs, T rhs)
+{
+    return operator*(lhs, _signed<sizeof(T)*8, A>(rhs));
 }
 
 
 // template<size_t SZ1, size_t SZ2> 
-// _signed<SZ1+SZ2> div_u(const _signed<SZ1>& lhs, _signed<SZ2> rhs){
+// _signed<SZ1+SZ2> div_u(const _signed<SZ1, A>& lhs, _signed<SZ2, A> rhs){
 //    _signed<SZ1+SZ2> ret;
 //    auto diff = lhs.get_segments_count() - rhs.get_segments_count();
 //    for(size_t i=0; i<diff; i++){
@@ -813,13 +941,13 @@ inline _signed<SZ+sizeof(T)*8> operator*(const _signed<SZ>& lhs, T rhs){
 // }
 
 // template<size_t SZ1, size_t SZ2>
-// inline _signed<SZ1+SZ2> operator/(const _signed<SZ1>& lhs, const _signed<SZ2>& rhs){
+// inline _signed<SZ1+SZ2> operator/(const _signed<SZ1, A>& lhs, const _signed<SZ2, A>& rhs){
 // }
 
 
 
 //template<size_t SZ1, size_t SZ2> // take two unsinged
-//static _signed<SZ1+SZ2> div_u(const _signed<SZ1>& lhs, _signed<SZ2> rhs){
+//static _signed<SZ1+SZ2> div_u(const _signed<SZ1, A>& lhs, _signed<SZ2, A> rhs){
 //    if(lhs == rhs) return _signed<8>::ONE;
 //    if(lhs <  rhs) return _signed<8>::ZERO; // use comp_u
 //}
@@ -827,39 +955,49 @@ inline _signed<SZ+sizeof(T)*8> operator*(const _signed<SZ>& lhs, T rhs){
 
 // Uniary Operators
 //operator~
-template<size_t _SZ>
-inline _signed<_SZ> operator~(_signed<_SZ> lhs){
+template<size_t _SZ, typename A>
+inline _signed<_SZ, A> operator~
+(_signed<_SZ, A> lhs)
+{
     //TODO: truncation?
     for(auto& s : lhs._segments) s = ~s;
     return lhs;
 }
 
 //operator prefix++;
-template<size_t _SZ>
-inline _signed<_SZ>& operator++(_signed<_SZ>& lhs){
+template<size_t _SZ, typename A>
+inline _signed<_SZ, A>& operator++
+(_signed<_SZ, A>& lhs)
+{
     lhs = (lhs+1);
     return lhs;
 }
 
 //operator postfix++;
-template<size_t _SZ>
-inline _signed<_SZ> operator++(_signed<_SZ>& lhs, int){
-    _signed<_SZ> ret(lhs);
+template<size_t _SZ, typename A>
+inline _signed<_SZ, A> operator++
+(_signed<_SZ, A>& lhs, int)
+{
+    _signed<_SZ, A> ret(lhs);
     ++lhs;
     return ret;
 }
 
 //operator prefix--
-template<size_t _SZ>
-inline _signed<_SZ>& operator--(_signed<_SZ> lhs){
+template<size_t _SZ, typename A>
+inline _signed<_SZ, A>& operator--
+(_signed<_SZ, A> lhs)
+{
     lhs = (lhs-1);
     return lhs;
 }
 
 //operator postfix--
-template<size_t _SZ>
-inline _signed<_SZ> operator--(_signed<_SZ> lhs, int){
-    _signed<_SZ> ret(lhs);
+template<size_t _SZ, typename A>
+inline _signed<_SZ, A> operator--
+(_signed<_SZ, A> lhs, int)
+{
+    _signed<_SZ, A> ret(lhs);
     --lhs;
     return ret;
 }
@@ -881,26 +1019,30 @@ inline _signed<_SZ> operator--(_signed<_SZ> lhs, int){
 
 
 // Binary Operators
-//#pragma GCC diagnostic ignored "-Wshift-overflow"
 //operator<<
 // TODO: reduce redundant copy
-template<size_t SZ>
-inline _signed<SZ> operator<<(const _signed<SZ>& lhs, size_t shift){
-    _signed<SZ> ret = lhs;
+template<size_t SZ, typename A>
+inline _signed<SZ, A> operator<<
+(const _signed<SZ, A>& lhs, size_t shift)
+{
+    using seg_t = typename A::seg_t;
+    constexpr size_t seg_t_bits = A::seg_t_bits;
+
+    _signed<SZ, A> ret = lhs;
     if(shift == 0) return ret;
 
-    size_t seg_dist = shift / impl_t_bits;
-    size_t seghi_shift = shift - seg_dist * impl_t_bits;
-    size_t seglo_shift = impl_t_bits - seghi_shift;
+    size_t seg_dist = shift / seg_t_bits;
+    size_t seghi_shift = shift - seg_dist * seg_t_bits;
+    size_t seglo_shift = seg_t_bits - seghi_shift;
 
     for(size_t i=0; i < lhs.segments_count; i++){
         // NOTE: this conditional is here due to bitshift operator restriction
         //       to range [0, sizeof(T)*8) on Intel cpu's
-        impl_t seglo = seglo_shift < impl_t_bits
+        seg_t seglo = seglo_shift < seg_t_bits
             ? lhs.get_segment(i - seg_dist - 1) >> seglo_shift
             : 0;
 
-        impl_t seghi = lhs.get_segment(i - seg_dist) << seghi_shift;
+        seg_t seghi = lhs.get_segment(i - seg_dist) << seghi_shift;
 
         ret._segments[i] = seglo | seghi;
     }
@@ -909,29 +1051,36 @@ inline _signed<SZ> operator<<(const _signed<SZ>& lhs, size_t shift){
 
 
 //operator<<=
-template<size_t SZ>
-inline _signed<SZ>& operator<<=(_signed<SZ>& lhs, size_t shift){
+template<size_t SZ, typename A>
+inline _signed<SZ, A>& operator<<=
+(_signed<SZ, A>& lhs, size_t shift)
+{
     lhs = lhs << shift;
     return lhs;
 }
 
 //operator>>
 // TODO: reduce redundant copy
-template<size_t SZ>
-inline _signed<SZ> operator>>(const _signed<SZ>& lhs, size_t shift){
-    _signed<SZ> ret = lhs;
+template<size_t SZ, typename A>
+inline _signed<SZ, A> operator>>
+(const _signed<SZ, A>& lhs, size_t shift)
+{
+    using seg_t = typename A::seg_t;
+    constexpr size_t seg_t_bits = A::seg_t_bits;
+
+    _signed<SZ, A> ret = lhs;
     if(shift == 0) return ret;
 
-    size_t seg_dist = shift / impl_t_bits;
-    size_t seglo_shift = shift - seg_dist * impl_t_bits;
-    size_t seghi_shift = impl_t_bits - seglo_shift;
+    size_t seg_dist = shift / seg_t_bits;
+    size_t seglo_shift = shift - seg_dist * seg_t_bits;
+    size_t seghi_shift = seg_t_bits - seglo_shift;
 
     for(size_t i=0; i<lhs.segments_count; i++){
-        impl_t seglo = lhs.get_segment(i + seg_dist) >> seglo_shift;
+        seg_t seglo = lhs.get_segment(i + seg_dist) >> seglo_shift;
 
         // NOTE: this conditional is here due to bitshift operator restriction
         //       to range [0, sizeof(T)*8) on Intel cpu's
-        impl_t seghi = seghi_shift < impl_t_bits
+        seg_t seghi = seghi_shift < seg_t_bits
             ? lhs.get_segment(i + seg_dist + 1) << seghi_shift
             : 0;
         ret._segments[i] = seglo | seghi;
@@ -940,50 +1089,62 @@ inline _signed<SZ> operator>>(const _signed<SZ>& lhs, size_t shift){
 }
 
 //operator>>=
-template<size_t SZ>
-inline _signed<SZ>& operator>>=(_signed<SZ>& lhs, size_t shift){
+template<size_t SZ, typename A>
+inline _signed<SZ, A>& operator>>=
+(_signed<SZ, A>& lhs, size_t shift)
+{
     lhs = lhs >> shift;
     return lhs;
 }
 
-
-//#pragma GCC diagnostic pop
 //operator&
-template<size_t SZ, typename T>
-//std::enable_if_t<std::is_integral_v<T>>
-inline _signed<std::min(SZ, sizeof(T)*8)> operator&(const _signed<SZ>& lhs, const T rhs){
-    return (lhs & _signed<(sizeof(T)*8)>(rhs));
+template<size_t SZ, typename A, typename T>
+inline _signed<std::min(SZ, sizeof(T)*8), A> operator&
+(const _signed<SZ, A>& lhs, const T rhs)
+{
+    return (lhs & _signed<(sizeof(T)*8), A>(rhs));
 }
-template<size_t SZ1, size_t SZ2>
-inline _signed<std::min(SZ1, SZ2)> operator&(const _signed<SZ1>& lhs, const _signed<SZ2>& rhs){
-    _signed<std::min(SZ1, SZ2)> ret;
+
+template<size_t SZ1, size_t SZ2, typename A>
+inline _signed<std::min(SZ1, SZ2), A> operator&
+(const _signed<SZ1, A>& lhs, const _signed<SZ2, A>& rhs)
+{
+    _signed<std::min(SZ1, SZ2), A> ret;
     for(size_t i=0; i < std::min(lhs.segments_count, rhs.segments_count); i++)
         ret._segments[i] = lhs.get_segment(i) & rhs.get_segment(i);
     return ret;
 }
 
 //operator|
-template<size_t SZ, typename T>
-//std::enable_if_t<std::is_integral_v<T>>
-inline _signed<std::max(SZ, sizeof(T)*8)> operator|(const _signed<SZ>& lhs, const T rhs){
+template<size_t SZ, typename T, typename A>
+inline _signed<std::max(SZ, sizeof(T)*8), A> operator|
+(const _signed<SZ, A>& lhs, const T rhs)
+{
     return (lhs & _signed<(sizeof(T)*8)>(rhs));
 }
-template<size_t SZ1, size_t SZ2>
-inline _signed<std::max(SZ1, SZ2)> operator|(const _signed<SZ1>& lhs, const _signed<SZ2>& rhs){
-    _signed<std::max(SZ1, SZ2)> ret;
+
+template<size_t SZ1, size_t SZ2, typename A>
+inline _signed<std::max(SZ1, SZ2)> operator|
+(const _signed<SZ1, A>& lhs, const _signed<SZ2, A>& rhs)
+{
+    _signed<std::max(SZ1, SZ2), A> ret;
     for(size_t i=0; i < std::min(lhs.segments_count, rhs.segments_count); i++)
         ret._segments[i] = lhs.get_segment(i) | rhs.get_segment(i);
     return ret;
 }
 
 //operator^
-template<size_t SZ, typename T>
-//std::enable_if_t<std::is_integral_v<T>>
-inline _signed<std::max(SZ, sizeof(T)*8)> operator^(const _signed<SZ>& lhs, const T rhs){
-    return (lhs & _signed<(sizeof(T)*8)>(rhs));
+template<size_t SZ, typename T, typename A>
+inline _signed<std::max(SZ, sizeof(T)*8)> operator^
+(const _signed<SZ, A>& lhs, const T rhs)
+{
+    return (lhs & _signed<(sizeof(T)*8), A>(rhs));
 }
-template<size_t SZ1, size_t SZ2>
-inline _signed<std::max(SZ1, SZ2)> operator^(const _signed<SZ1>& lhs, const _signed<SZ2>& rhs){
+
+template<size_t SZ1, size_t SZ2, typename A>
+inline _signed<std::max(SZ1, SZ2)> operator^
+(const _signed<SZ1, A>& lhs, const _signed<SZ2, A>& rhs)
+{
     _signed<std::max(SZ1, SZ2)> ret;
     for(size_t i=0; i < std::min(lhs.segments_count, rhs.segments_count); i++)
         ret._segments[i] = lhs.get_segment(i) ^ rhs.get_segment(i);
@@ -991,11 +1152,15 @@ inline _signed<std::max(SZ1, SZ2)> operator^(const _signed<SZ1>& lhs, const _sig
 }
 
 // Relational Operators
-template<size_t SZ1, size_t SZ2>
-inline int8_t comp_u(const _signed<SZ1>& lhs, const _signed<SZ2>& rhs){
+template<size_t SZ1, size_t SZ2, typename A>
+inline int8_t comp_u
+(const _signed<SZ1, A>& lhs, const _signed<SZ2, A>& rhs)
+{
+    using seg_t = typename A::seg_t;
+
     for(size_t i = std::max(lhs.segments_count, rhs.segments_count); i > 0; i--){
-        impl_t lhs_seg = lhs.get_segment(i-1);
-        impl_t rhs_seg = rhs.get_segment(i-1);
+        seg_t lhs_seg = lhs.get_segment(i-1);
+        seg_t rhs_seg = rhs.get_segment(i-1);
 
         if(lhs_seg == rhs_seg) continue;
         else {
@@ -1007,8 +1172,10 @@ inline int8_t comp_u(const _signed<SZ1>& lhs, const _signed<SZ2>& rhs){
 }
 
 //operator>
-template<size_t SZ1, size_t SZ2>
-inline bool operator>(const _signed<SZ1>& lhs, const _signed<SZ2>& rhs){
+template<size_t SZ1, size_t SZ2, typename A>
+inline bool operator>
+(const _signed<SZ1, A>& lhs, const _signed<SZ2, A>& rhs)
+{
     if(lhs.sign_bool() xor rhs.sign_bool())
         return lhs.sign() > 0;
     else
@@ -1016,8 +1183,10 @@ inline bool operator>(const _signed<SZ1>& lhs, const _signed<SZ2>& rhs){
 }
 
 //operator<
-template<size_t SZ1, size_t SZ2>
-inline bool operator<(const _signed<SZ1>& lhs, const _signed<SZ2>& rhs){
+template<size_t SZ1, size_t SZ2, typename A>
+inline bool operator<
+(const _signed<SZ1, A>& lhs, const _signed<SZ2, A>& rhs)
+{
     if(lhs.sign_bool() xor rhs.sign_bool())
         return lhs.sign() < 0;
     else
@@ -1025,8 +1194,10 @@ inline bool operator<(const _signed<SZ1>& lhs, const _signed<SZ2>& rhs){
 }
 
 //operator==
-template<size_t SZ1, size_t SZ2>
-inline bool operator==(const _signed<SZ1>& lhs, const _signed<SZ2>& rhs){
+template<size_t SZ1, size_t SZ2, typename A>
+inline bool operator==
+(const _signed<SZ1, A>& lhs, const _signed<SZ2, A>& rhs)
+{
     if(lhs.sign() == rhs.sign())
         return comp_u(lhs, rhs) == 0;
     else
@@ -1034,21 +1205,28 @@ inline bool operator==(const _signed<SZ1>& lhs, const _signed<SZ2>& rhs){
 }
 
 //operator!=
-template<size_t SZ1, size_t SZ2>
-inline bool operator!=(const _signed<SZ1>& lhs, const _signed<SZ2>& rhs){
+template<size_t SZ1, size_t SZ2, typename A>
+inline bool operator!=
+(const _signed<SZ1, A>& lhs, const _signed<SZ2, A>& rhs)
+{
     return !(lhs == rhs);
 }
 
 //operator<=
-template<size_t SZ1, size_t SZ2>
-inline bool operator<=(const _signed<SZ1>& lhs, const _signed<SZ2>& rhs){
+template<size_t SZ1, size_t SZ2, typename A>
+inline bool operator<=
+(const _signed<SZ1, A>& lhs, const _signed<SZ2, A>& rhs)
+{
     return (lhs < rhs || lhs == rhs);
 }
 
 //operator>=
-template<size_t SZ1, size_t SZ2>
-inline bool operator>=(const _signed<SZ1>& lhs, const _signed<SZ2>& rhs){
+template<size_t SZ1, size_t SZ2, typename A>
+inline bool operator>=
+(const _signed<SZ1, A>& lhs, const _signed<SZ2, A>& rhs)
+{
     return (lhs > rhs || lhs == rhs);
 }
+
 } //namespace apa
 
