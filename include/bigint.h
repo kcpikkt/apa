@@ -941,7 +941,8 @@ template<size_t SZ1, size_t SZ2, typename A>
 static _signed<SZ1+SZ2, A> mul_u
     (const _signed<SZ1, A>& lhs, _signed<SZ2, A> rhs)
 {
-    using fp_t = typename A::fp_t;
+    using fp_t  = typename A::fp_t;
+    using seg_t = typename A::seg_t;
     constexpr size_t seg_t_bits = A::seg_t_bits;
     constexpr size_t RET_SZ = SZ1 + SZ2;
     constexpr size_t tmp_arr_sz = _signed<RET_SZ, A>::segments_count;
@@ -966,7 +967,7 @@ static _signed<SZ1+SZ2, A> mul_u
     fast_fourier_transform<A>(Z.begin(), Z.end(), true);
 
     // during 'reassemly' of the number a little bit more space is needed
-    constexpr size_t TMP_SZ = 2 * RET_SZ;
+    constexpr size_t TMP_SZ = sizeof(seg_t) * RET_SZ;
 
     _signed<TMP_SZ, A> temp = 0;
 
@@ -987,8 +988,8 @@ template<size_t SZ1, size_t SZ2, typename A>
 inline _signed<SZ1+SZ2, A> operator*
     (const _signed<SZ1, A>& lhs, const _signed<SZ2, A>& rhs)
 {
-    _signed<SZ1+SZ2> ret = mul_u(lhs,rhs);
-    ret.set_sign_bool(lhs.sign() xor rhs.sign());
+    auto ret = mul_u(lhs,rhs);
+    ret.set_sign_bool( lhs.sign() xor rhs.sign() );
     return ret;
 }
 

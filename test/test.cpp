@@ -14,8 +14,15 @@
 #define private public // :)
 #pragma GCC diagnostic pop
 
-#define APA_FP_TYPE double // internal word size
-#define APA_IMPL_TYPE uint16_t // internal word size
+// NOTE(kacper): just in case, this is technically non-standard macro
+#ifndef __COUNTER__
+    #define __COUNTER__ 27u
+#endif
+
+// HACK(kacper): compile time counter for 'randomness'
+#define HASHLINE(X) \
+((__LINE__ >> ((__COUNTER__ + X) % 32)) ^ (__LINE__ * 185791827599696181ULL))
+
 #include "bigint.h"
 
 template<typename ...Ts> void print(Ts... ts){
@@ -29,27 +36,27 @@ template<typename ...Ts> void log(Ts... ts){ print(ts..., '\n'); }
 
 #define STR_HELPER(x) #x
 #define STR(x) STR_HELPER(x)
-#define S_TYPE(N) "apa::s<" STR(N) ">"
+#define S_TYPE(N) "_signed<" STR(N) ", A>"
 
-namespace{
-    using impl_t = APA_IMPL_TYPE;
-    [[maybe_unused]] constexpr size_t impl_t_size = sizeof(impl_t);
-    [[maybe_unused]] constexpr size_t impl_t_bits = sizeof(impl_t)*8;
-}
+// namespace{
+//     using impl_t = APA_IMPL_TYPE;
+//     [[maybe_unused]] constexpr size_t impl_t_size = sizeof(impl_t);
+//     [[maybe_unused]] constexpr size_t impl_t_bits = sizeof(impl_t)*8;
+// }
 
-template<size_t SZ, typename T>
-bool equal(apa::s<SZ> bint, T tint) {
-    size_t i = 0;
-    for(; i < bint.segments_count && i < sizeof(T) / sizeof(impl_t); i++){
-        impl_t mask = static_cast<impl_t> (tint >> i * sizeof(impl_t) * 8);
+// template<size_t SZ, typename T>
+// bool equal(apa::s<SZ> bint, T tint) {
+//     size_t i = 0;
+//     for(; i < bint.segments_count && i < sizeof(T) / sizeof(impl_t); i++){
+//         impl_t mask = static_cast<impl_t> (tint >> i * sizeof(impl_t) * 8);
 
-        if(! (bint.get_segment(i) == mask)) return false;
-    }
-    for(; i < bint.segments_count; i++){
-        if(! (bint.get_segment(i) == 0)) return false;
-    }
-    return true;
-}
+//         if(! (bint.get_segment(i) == mask)) return false;
+//     }
+//     for(; i < bint.segments_count; i++){
+//         if(! (bint.get_segment(i) == 0)) return false;
+//     }
+//     return true;
+// }
 
 std::random_device rd;
 std::mt19937    mt32(rd());
@@ -61,14 +68,6 @@ void init_random_data(std::array<T, ARR_SZ>& data) {
         data[i] = static_cast<T>(mt64());
 }
 
-template<size_t SZ, typename T, size_t ARR_SZ>
-apa::s<SZ> create_signed(std::array<T, ARR_SZ>& data, bool sign = 0) {
-    apa::s<SZ> ret;
-    REQUIRE(ret.import(data.data(), data.size()));
-    ret.set_sign_bool(sign);
-    return ret;
-}
-
 template<typename T, size_t ARR_SZ>
 void create_mpz(mpz_t * mpz, std::array<T, ARR_SZ>& data, bool sign = 0) {
     mpz_init(*mpz);
@@ -76,18 +75,217 @@ void create_mpz(mpz_t * mpz, std::array<T, ARR_SZ>& data, bool sign = 0) {
     if(sign) mpz_neg(*mpz, *mpz);
 }
 
-template<size_t SZ>
-apa::s<SZ> mpz_to_signed(mpz_t * mpz) {
-    constexpr size_t ARR_SZ = (SZ / (sizeof(uint64_t) * 8)) << 1;
-    apa::s<SZ> ret;
-    std::array<uint64_t, ARR_SZ> data = {0};
-    size_t count = 0;
-    mpz_export(data.data(), &count, -1, sizeof(uint64_t), 0, 0, *mpz);
-    REQUIRE(ret.import(data.data(), data.size()));
-    ret.set_sign( mpz_sgn(*mpz));
+template<size_t SZ, typename A>
+apa::_signed<SZ, A> mpz_to_signed(mpz_t * mpz) {
+    apa::_signed<SZ, A> ret;
+    using byte = unsigned char;
+    size_t count = (mpz_sizeinbase(*mpz, 2) / (sizeof(byte) * 8)) << 1;
+
+    byte * data = (byte *) malloc(count);
+
+        size_t rcount = 0;
+        mpz_export(data, &rcount, -1, sizeof(byte), 0, 0, *mpz);
+        REQUIRE( ret.import(data, rcount) );
+        ret.set_sign( mpz_sgn(*mpz) );
+
+    free(data);
+
     return ret;
 }
 
+// Compile time random numbers for use in templates
+// (Stolen from Jason Turner's C++ weekly ep 44)
+struct PCG {
+private:
+    constexpr static uint64_t seed() {
+        uint64_t shifted = 0;
+        for(const auto c : __TIME__) {
+            shifted <<= 8;
+            shifted |= c;
+        }
+        return shifted;
+    }
+
+    constexpr uint64_t pcg_random(size_t iter) {
+        uint64_t old = iter * 6364136223846793006ULL + (seed() | 1);
+        uint64_t xorshifted = ((old >> 18u) ^ old) >> 27u;
+        uint64_t rot = old >> 59u;
+        return (xorshifted >> rot) | (xorshifted << ((-rot) & 31));
+    }
+
+public:
+    constexpr uint64_t operator()(uint64_t iter) {
+        return pcg_random(iter);
+    }
+    constexpr uint64_t range(uint64_t min, uint64_t max, uint64_t iter){
+        return (pcg_random(iter) % (max - min)) + min;
+    }
+};
+
+struct Test {
+    template<typename Attr>
+    void random_signed_test(size_t times);
+
+    template<size_t SZ, typename Attr, typename T, size_t ARR_SZ>
+    apa::_signed<SZ, Attr> create_signed
+        (std::array<T, ARR_SZ>& data, bool sign = 0);
+
+    template<size_t B, typename A>
+    void signed_basic_test();
+
+    template<size_t B1, size_t B2, typename A>
+    void signed_addition_test();
+
+    template<size_t B1, size_t B2, typename A>
+    void signed_subtraction_test();
+
+    template<size_t B1, size_t B2, typename A>
+    void signed_multiplication_test();
+
+    template<size_t B, typename A>
+    void signed_bitshift_right_test();
+
+    template<size_t B, typename A>
+    void signed_bitshift_left_test();
+
+    template<size_t B, typename A>
+    void signed_sign_test();
+
+    template<typename Attr>
+    void signed_full_random_test(size_t times);
+
+};
+
+TEST_CASE("_signed<?, NumAttr< uint8_t, double >>")
+{
+    using Attr = apa::NumAttr<uint8_t, double>;
+    Test().signed_full_random_test< Attr >(medium_test_repeats);
+}
+
+TEST_CASE("_signed<?, NumAttr< uint16_t, double >>")
+{
+    using Attr = apa::NumAttr<uint16_t, double>;
+    Test().signed_full_random_test< Attr >(medium_test_repeats);
+}
+
+// TEST_CASE("_signed<?, NumAttr< uint32_t, double >>")
+// {
+//     using Attr = apa::NumAttr<uint32_t, long double>;
+//     Test().signed_full_random_test< Attr >(medium_test_repeats);
+// }
+
+// TEST_CASE("_signed<?, NumAttr< uint64_t, double >>")
+// {
+//     using Attr = apa::NumAttr<uint64_t, double>;
+//     Test().signed_full_random_test< Attr >(medium_test_repeats);
+// }
+
+
+
+
+template<typename Attr>
+void Test::signed_full_random_test(size_t times) {
+    PCG pcg;
+    constexpr auto pow2 =
+        [](uint64_t p) -> uint64_t { return ((uint64_t)1 << p); };
+
+    SECTION( "Basics" ) {
+        TIMES(times) signed_sign_test<
+            pcg.range(0, pow2(10), HASHLINE(0)),
+            Attr>();
+    }
+    SECTION( "Addition against gmp" ) {
+
+        TIMES(times) signed_addition_test<
+            pcg.range(0, pow2(10), HASHLINE(0)),
+            pcg.range(0, pow2(10), HASHLINE(1)),
+            Attr>();
+
+        TIMES(times) signed_addition_test<
+            pcg.range(pow2(10), pow2(12), HASHLINE(0)),
+            pcg.range(pow2(10), pow2(12), HASHLINE(1)),
+            Attr>();
+
+        TIMES(times) signed_addition_test<
+            pcg.range(pow2(12), pow2(14), HASHLINE(0)),
+            pcg.range(pow2(12), pow2(14), HASHLINE(1)),
+            Attr>();
+    }
+
+    SECTION( "Subtraction against gmp" ) {
+
+        TIMES(times) signed_subtraction_test<
+            pcg.range(0, pow2(10), HASHLINE(0)),
+            pcg.range(0, pow2(10), HASHLINE(1)),
+            Attr>();
+
+        TIMES(times) signed_subtraction_test<
+            pcg.range(pow2(10), pow2(12), HASHLINE(0)),
+            pcg.range(pow2(10), pow2(12), HASHLINE(1)),
+            Attr>();
+
+        TIMES(times) signed_subtraction_test<
+            pcg.range(pow2(12), pow2(14), HASHLINE(0)),
+            pcg.range(pow2(12), pow2(14), HASHLINE(1)),
+            Attr>();
+    }
+
+
+    SECTION( "Multiplication against gmp" ) {
+
+        TIMES(times) signed_multiplication_test<
+            pcg.range(0, pow2(10), HASHLINE(0)),
+            pcg.range(0, pow2(10), HASHLINE(1)),
+            Attr>();
+
+        TIMES(times) signed_multiplication_test<
+            pcg.range(pow2(10), pow2(12), HASHLINE(0)),
+            pcg.range(pow2(10), pow2(12), HASHLINE(1)),
+            Attr>();
+    }
+
+    SECTION( "Bitshift right against gmp" ) {
+
+        TIMES(times) signed_bitshift_right_test<
+            pcg.range(0, pow2(10), HASHLINE(0)),
+            Attr>();
+
+        TIMES(times) signed_bitshift_right_test<
+            pcg.range(pow2(10), pow2(12), HASHLINE(0)),
+            Attr>();
+
+        TIMES(times) signed_bitshift_right_test<
+            pcg.range(pow2(12), pow2(14), HASHLINE(0)),
+            Attr>();
+    }
+
+    SECTION( "Bitshift left against gmp" ) {
+
+        TIMES(times) signed_bitshift_left_test<
+            pcg.range(0, pow2(10), HASHLINE(0)),
+            Attr>();
+
+        TIMES(times) signed_bitshift_left_test<
+            pcg.range(pow2(10), pow2(12), HASHLINE(0)),
+            Attr>();
+
+        TIMES(times) signed_bitshift_left_test<
+            pcg.range(pow2(12), pow2(14), HASHLINE(0)),
+            Attr>();
+    }
+}
+
+template<size_t SZ, typename Attr, typename T, size_t ARR_SZ>
+apa::_signed<SZ, Attr> Test::create_signed
+    (std::array<T, ARR_SZ>& data, bool sign)
+{
+    apa::_signed<SZ, Attr> ret;
+    REQUIRE(ret.import(data.data(), data.size()));
+    ret.set_sign_bool(sign);
+    return ret;
+}
+
+/*
 TEST_CASE( "Constructors" ) {
 
     SECTION( "Zero initialized when no parameters provided" ) {
@@ -131,27 +329,7 @@ TEST_CASE( "Constructors" ) {
 }
 
 TEST_CASE( "Basics" ) {
-
-    SECTION("Setting sign") {
-        apa::s<1024> bint;
-        bint.set_sign_bool(0);
-        REQUIRE(bint.sign() ==  1);
-
-        bint.negate();
-        REQUIRE(bint.sign() == -1);
-
-        bint.set_sign_bool(1);
-        REQUIRE(bint.sign() == -1);
-
-        bint.negate();
-        REQUIRE(bint.sign() ==  1);
-
-        bint.set_sign(1);
-        REQUIRE(bint.sign() ==  1);
-
-        bint.set_sign(-1);
-        REQUIRE(bint.sign() == -1);
-    }
+   }
 
 }
 
@@ -283,9 +461,10 @@ TEST_CASE( "Comparison" ) {
     }
 }
 
+*/
 
-template<size_t B1, size_t B2>
-void addition_test()
+template<size_t B1, size_t B2, typename A>
+void Test::signed_addition_test()
 {
     constexpr size_t DATA_ARR_SZ1 = B1 / (sizeof(uint64_t) * 8);
     constexpr size_t DATA_ARR_SZ2 = B2 / (sizeof(uint64_t) * 8);
@@ -296,25 +475,24 @@ void addition_test()
 
     bool sign1 = mt32() & 1, sign2 = mt32() & 1;
 
-    auto bint1 = create_signed<B1>(datain1, sign1);
-    auto bint2 = create_signed<B2>(datain2, sign2);
+    auto bint1 = create_signed<B1, A>(datain1, sign1);
+    auto bint2 = create_signed<B2, A>(datain2, sign2);
 
     mpz_t gmpint1, gmpint2;
     create_mpz(&gmpint1, datain1, sign1);
     create_mpz(&gmpint2, datain2, sign2);
 
-    // auto bint_result = apa::s<1024>::operator+(bint1, bint2, bint1::_A);
     auto bint_result = bint1 + bint2;
 
     mpz_t gmpint_result;
     mpz_init(gmpint_result);
     mpz_add(gmpint_result, gmpint1, gmpint2);
 
-    REQUIRE(mpz_to_signed<std::max(B1, B2) + 1>(&gmpint_result) == bint_result);
+    REQUIRE(mpz_to_signed<std::max(B1, B2) + 1, A>(&gmpint_result) == bint_result);
 }
 
-template<size_t B1, size_t B2>
-void subtraction_test()
+template<size_t B1, size_t B2, typename A>
+void Test::signed_subtraction_test()
 {
     constexpr size_t DATA_ARR_SZ1 = B1 / (sizeof(uint64_t) * 8);
     constexpr size_t DATA_ARR_SZ2 = B2 / (sizeof(uint64_t) * 8);
@@ -325,8 +503,8 @@ void subtraction_test()
 
     bool sign1 = mt32() & 1, sign2 = mt32() & 1;
 
-    auto bint1 = create_signed<B1>(datain1, sign1);
-    auto bint2 = create_signed<B2>(datain2, sign2);
+    auto bint1 = create_signed<B1, A>(datain1, sign1);
+    auto bint2 = create_signed<B2, A>(datain2, sign2);
 
     mpz_t gmpint1, gmpint2;
     create_mpz(&gmpint1, datain1, sign1);
@@ -338,11 +516,11 @@ void subtraction_test()
     mpz_init(gmpint_result);
     mpz_sub(gmpint_result, gmpint1, gmpint2);
 
-    REQUIRE(mpz_to_signed<std::max(B1, B2) + 1>(&gmpint_result) == bint_result);
+    REQUIRE(mpz_to_signed<std::max(B1, B2) + 1, A>(&gmpint_result) == bint_result);
 }
 
-template<size_t B1, size_t B2>
-void multiplication_test()
+template<size_t B1, size_t B2, typename A>
+void Test::signed_multiplication_test()
 {
     constexpr size_t DATA_ARR_SZ1 = B1 / (sizeof(uint64_t) * 8);
     constexpr size_t DATA_ARR_SZ2 = B2 / (sizeof(uint64_t) * 8);
@@ -355,8 +533,8 @@ void multiplication_test()
 
     std::string str;
 
-    auto bint1 = create_signed<B1>(datain1, sign1);
-    auto bint2 = create_signed<B2>(datain2, sign2);
+    auto bint1 = create_signed<B1, A>(datain1, sign1);
+    auto bint2 = create_signed<B2, A>(datain2, sign2);
 
 
     mpz_t gmpint1, gmpint2;
@@ -369,42 +547,18 @@ void multiplication_test()
     mpz_init(gmpint_result);
     mpz_mul(gmpint_result, gmpint1, gmpint2);
 
-    REQUIRE(mpz_to_signed<B1 + B2>(&gmpint_result) == bint_result);
+    REQUIRE(mpz_to_signed<B1 + B2, A>(&gmpint_result) == bint_result);
 }
 
-template<size_t B>
-void bitshift_left_test()
-{
-    constexpr size_t TEST_BIT_SZ = B;
-    constexpr size_t DATA_ARR_SZ = TEST_BIT_SZ / (sizeof(uint64_t) * 8);
-
-    std::array<uint64_t, DATA_ARR_SZ> datain1, datain2;
-    init_random_data(datain1); init_random_data(datain2);
-
-    auto bint1 = create_signed<TEST_BIT_SZ>(datain1, false);
-    auto shift = mt64() % TEST_BIT_SZ;
-
-    mpz_t gmpint1;
-    create_mpz(&gmpint1, datain1, false);
-
-    auto bint_result = bint1 << shift;
-
-    mpz_t gmpint_result;
-    mpz_init(gmpint_result);
-    mpz_mul_2exp(gmpint_result, gmpint1, shift);
-
-    REQUIRE(mpz_to_signed<TEST_BIT_SZ>(&gmpint_result) == bint_result);
-}
-
-template<size_t B>
-void bitshift_right_test()
+template<size_t B, typename A>
+void Test::signed_bitshift_right_test()
 {
     constexpr size_t DATA_ARR_SZ = B / (sizeof(uint64_t) * 8);
 
     std::array<uint64_t, DATA_ARR_SZ> datain1, datain2;
     init_random_data(datain1); init_random_data(datain2);
 
-    auto bint1 = create_signed<B>(datain1, false);
+    auto bint1 = create_signed<B, A>(datain1, false);
     auto shift = mt64() % B;
 
     mpz_t gmpint1;
@@ -416,55 +570,51 @@ void bitshift_right_test()
     mpz_init(gmpint_result);
     mpz_fdiv_q_2exp(gmpint_result, gmpint1, shift);
 
-    REQUIRE(mpz_to_signed<B>(&gmpint_result) == bint_result);
+    REQUIRE(mpz_to_signed<B, A>(&gmpint_result) == bint_result);
 }
 
-TEST_CASE( "Arithmentic" ) {
+template<size_t B, typename A>
+void Test::signed_bitshift_left_test()
+{
+    constexpr size_t DATA_ARR_SZ = B / (sizeof(uint64_t) * 8);
 
-    SECTION( "Addition" ) {
+    std::array<uint64_t, DATA_ARR_SZ> datain1, datain2;
+    init_random_data(datain1); init_random_data(datain2);
 
-        SECTION( "operator+(apa::s<SZ1>, apa::s<SZ2>) against gmp" ) {
+    auto bint1 = create_signed<B, A>(datain1, false);
+    auto shift = mt64() % B;
 
-            TIMES(medium_test_repeats) addition_test<1024,1024>();
-            TIMES(medium_test_repeats) addition_test<1024,512>();
-            TIMES(medium_test_repeats) addition_test<4096,1024>();
-        }
-    }
+    mpz_t gmpint1;
+    create_mpz(&gmpint1, datain1, false);
 
-    SECTION( "Subtraction" ) {
+    auto bint_result = bint1 << shift;
 
-        SECTION( "operator-(apa::s<SZ1>, apa::s<SZ2>) against gmp" ) {
+    mpz_t gmpint_result;
+    mpz_init(gmpint_result);
+    mpz_mul_2exp(gmpint_result, gmpint1, shift);
 
-            TIMES(medium_test_repeats) subtraction_test<1024,1024>();
-            TIMES(medium_test_repeats) subtraction_test<1024,512>();
-            TIMES(medium_test_repeats) subtraction_test<4096,1024>();
-        }
-    }
+    REQUIRE(mpz_to_signed<B, A>(&gmpint_result) == bint_result);
+}
 
-    SECTION( "Multiplication" ) {
+template<size_t B, typename A>
+void Test::signed_sign_test()
+{
+    apa::_signed<B, A> bint;
+    bint.set_sign_bool(0);
+    REQUIRE(bint.sign() ==  1);
 
-        SECTION( "operator*(apa::s<SZ1>, apa::s<SZ2>) against gmp" ) {
+    bint.negate();
+    REQUIRE(bint.sign() == -1);
 
-            TIMES(medium_test_repeats) multiplication_test<8192,8192>();
-            TIMES(medium_test_repeats) multiplication_test<1024,512>();
-            TIMES(medium_test_repeats) multiplication_test<4096,1024>();
-        }
-    }
+    bint.set_sign_bool(1);
+    REQUIRE(bint.sign() == -1);
 
-    SECTION( "Bitshifts" ) {
+    bint.negate();
+    REQUIRE(bint.sign() ==  1);
 
-        SECTION( "operator<<(apa::s<SZ1>, size_t) against gmp" ) {
+    bint.set_sign(1);
+    REQUIRE(bint.sign() ==  1);
 
-            TIMES(medium_test_repeats) bitshift_left_test<1024>();
-            TIMES(medium_test_repeats) bitshift_left_test<4096>();
-            TIMES(medium_test_repeats) bitshift_left_test<512>();
-        }
-
-        SECTION( "operator>>(apa::s<SZ1>, size_t) against gmp" ) {
-
-            TIMES(medium_test_repeats) bitshift_right_test<1024>();
-            TIMES(medium_test_repeats) bitshift_right_test<4096>();
-            TIMES(medium_test_repeats) bitshift_right_test<512>();
-        }
-    }
+    bint.set_sign(-1);
+    REQUIRE(bint.sign() == -1);
 }
