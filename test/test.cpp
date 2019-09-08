@@ -14,6 +14,7 @@
 #define private public // :)
 #pragma GCC diagnostic pop
 
+#define APA_FP_TYPE double // internal word size
 #define APA_IMPL_TYPE uint16_t // internal word size
 #include "bigint.h"
 
@@ -357,13 +358,6 @@ void multiplication_test()
     auto bint1 = create_signed<B1>(datain1, sign1);
     auto bint2 = create_signed<B2>(datain2, sign2);
 
-    // str = bint1.binary_string();
-    // TIMES(64) print(str[i]); log("ok?");
-    // log(std::bitset<64>(datain1[DATA_ARR_SZ1 -1]));
-
-    // str = bint2.binary_string();
-    // TIMES(64) print(str[i]); log("ok?");
-    // log(std::bitset<64>(datain1[DATA_ARR_SZ2 -1]));
 
     mpz_t gmpint1, gmpint2;
     create_mpz(&gmpint1, datain1, sign1);
@@ -374,20 +368,6 @@ void multiplication_test()
     mpz_t gmpint_result;
     mpz_init(gmpint_result);
     mpz_mul(gmpint_result, gmpint1, gmpint2);
-
-    // str = bint_result.binary_string();
-    // TIMES(100) print(str[i]); log("ok?");
-
-    // str = mpz_to_signed<B1 + B2>(&gmpint_result).binary_string();
-    // TIMES(100) print(str[i]); log("ok?");
-    // log();
-
-    auto prt = [](apa::s<B1 + B2> bint){
-                   auto str = bint.binary_string();
-                   TIMES(64) print(str[i]); log();
-               };
-    prt(mpz_to_signed<B1 + B2>(&gmpint_result) );
-    prt(bint_result);
 
     REQUIRE(mpz_to_signed<B1 + B2>(&gmpint_result) == bint_result);
 }
@@ -465,9 +445,9 @@ TEST_CASE( "Arithmentic" ) {
 
         SECTION( "operator*(apa::s<SZ1>, apa::s<SZ2>) against gmp" ) {
 
-            TIMES(medium_test_repeats) multiplication_test<1024,1024>();
-            // TIMES(medium_test_repeats) multiplication_test<1024,512>();
-            // TIMES(medium_test_repeats) multiplication_test<4096,1024>();
+            TIMES(medium_test_repeats) multiplication_test<8192,8192>();
+            TIMES(medium_test_repeats) multiplication_test<1024,512>();
+            TIMES(medium_test_repeats) multiplication_test<4096,1024>();
         }
     }
 

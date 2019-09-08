@@ -7,27 +7,19 @@
 #IncludeRegexTransform: 
 
 ../include/bigint.h
-algorithm
--
 functional
 -
 complex
--
-vector
 -
 iostream
 -
 type_traits
 -
-assert.h
+cassert
 -
-array
+cstdint
 -
-stdint.h
--
-assert.h
--
-tgmath.h
+ctgmath
 -
 
 /shared/projects/bigint/test/include/catch2/catch.hpp

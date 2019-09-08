@@ -29,7 +29,7 @@ Division
 * Allow for non power of two integer sizes.
 * Acquire compile-time randomness for testing so integer sizes can be randomized.
 * Implement function returning last operation maximum error. (Numerical error are mostly negleble but present)
-* Test floating point conversions on big-endian CPU (or virtual machine?)
-
+* Big-endian support
+* operator overloads between types with different attributes
 
  
