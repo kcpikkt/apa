@@ -1,8 +1,8 @@
 # APA - C++17 Arbitrary Precision Arithmetic Library
 APA is yet another library that lets you perform calculations on numbers beyond cpu word size.
-It is self contained except for stl dependency which is planned to be optional or dropped entirely as its not crucial at all. It is tested against well known gmp with catch2.
+It is self contained except for stl dependency (which is not crucial). It is tested against well known gmp with catch2.
 
-What is perhaps different about it is that Signed Integer type is implemented as a class template 
+What is perhaps different about it is that signed integer type is implemented as a class template 
 with bit width being template parameter and therefore compile-time known.
 Motivated by the fact that in many use cases, like cryptography, 
 interger sizes are fixed and known a priori, but its yet to be tested how good/bad of an idea that was
@@ -14,7 +14,7 @@ Low level floating point types conversion is provided without intermediate cast 
 so you can assign floating point value greater than maximum integer value.
 This basically means that floating point type is punned, 
 mantissa is read directly from memory and shifted by exponent value (IEC 559/IEEE 754 assumed). 
-This was tested only on little-endian cpu though should work also on big-endian.
+This was tested only on little-endian cpu.
 
 Addition and subtraction are performed in O(n) with schoolbook algorithms.
 Multiplication uses non-recursive Fast Fourier Transform to run in O(n*log(n)) 
