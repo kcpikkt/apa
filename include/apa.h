@@ -1,5 +1,3 @@
-// hey, voice of reason here
-// instantiate whateevr you need and precompile this, no thanks needed
 #pragma once
 #include <functional>
 #include <complex>
