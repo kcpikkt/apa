@@ -6,7 +6,7 @@
 
 #IncludeRegexTransform: 
 
-../include/bigint.h
+../include/apa.h
 functional
 -
 complex
@@ -15,11 +15,11 @@ iostream
 -
 type_traits
 -
-assert.h
+cassert
 -
-stdint.h
+cstdint
 -
-tgmath.h
+ctgmath
 -
 
 /shared/projects/bigint/example/main.cpp
@@ -41,6 +41,6 @@ random
 -
 tgmath.h
 -
-bigint.h
-/shared/projects/bigint/example/bigint.h
+apa.h
+/shared/projects/bigint/example/apa.h
 

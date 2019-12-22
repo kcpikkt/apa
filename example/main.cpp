@@ -13,11 +13,16 @@
 template<typename ...Ts> void print(Ts... ts){
     (void) std::initializer_list<int>{ (std::cout << ts, 0)...}; }
 template<typename ...Ts> void log(Ts... ts){ print(ts..., '\n'); }
-#include "bigint.h"
+
+#include "apa.h"
 
 
 int main(){
-    apa::s<0> a(pow(2.0L, 128));
-    apa::s<0> b(pow(2.0L, 128));
-    apa::mul_u(a, b);
+    apa::s<128> a = 10;
+    apa::s<64> b = 172914.78;
+
+    // width of c is going to be 64 + 128 = 192
+    auto c = a * b;
+    // well, no division no printing....
+    // tests against gmp are passing though!
 }

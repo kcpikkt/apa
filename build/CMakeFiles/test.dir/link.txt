@@ -1,1 +1,1 @@
-/usr/bin/clang++     CMakeFiles/test.dir/test/test.cpp.o  -o ../bin/test -lgmp 
+/usr/bin/clang++     CMakeFiles/test.dir/test/test.cpp.o  -o ../bin/test  -lgmp 
